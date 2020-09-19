@@ -97,6 +97,7 @@ dist: clean link
 	mkdir -p build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)
 	mv -t build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN) \
 		build/GateleenResclone-$(PROJECT_VERSION)/README* \
+		build/GateleenResclone-$(PROJECT_VERSION)/LICENCE* \
 		build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
 	mkdir build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)/bin
 	mv -t build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)/bin \
