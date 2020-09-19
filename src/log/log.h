@@ -1,3 +1,5 @@
+/* By using this work you agree to the terms and conditions in 'LICENCE.txt' */
+
 #ifndef INCGUARD_540e2cd36c1ba21909b922d45a94b7f7
 #define INCGUARD_540e2cd36c1ba21909b922d45a94b7f7
 

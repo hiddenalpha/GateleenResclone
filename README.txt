@@ -1,6 +1,7 @@
+# By using this work you agree to the terms and conditions in 'LICENCE.txt'
 
 Gateleen Resclone
-============
+=================
 
 Commandline utility to clone subtrees from gateleen instances.
 
