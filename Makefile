@@ -2,7 +2,9 @@
 
 CC ?=gcc
 LD ?=ld
+AR ?=ar
 BINEXT ?= .elf
+LIBSEXT ?= .a
 TOOLCHAIN ?= lxGcc64
 
 ifndef PROJECT_VERSION
@@ -28,7 +30,7 @@ else
 	LDFLAGS := $(LDFLAGS) -Wl,--gc-sections,--as-needed
 endif
 
-OBJFILES ?= $(shell find src -name "*\.c" | sed -re "s;^src/(.*).c$$;build/\1.o;")
+OBJFILES ?= $(shell find src -name "*\.c" | sed -re "s;^src/(.*).c$$;build/obj/\1.o;")
 
 INCDIRS ?= -Iinclude  \
 		   $(shell find src -type d | sed "s;^;-I;")  \
@@ -45,8 +47,8 @@ endif
 
 default: dist
 
-link:                                          \
-	build/entrypoint/gateleenResclone$(BINEXT) \
+link:                                   \
+	build/bin/gateleenResclone$(BINEXT) \
 
 .PHONY: clean
 clean:
@@ -55,60 +57,63 @@ clean:
 
 compile: $(OBJFILES)
 
-build/%.o: src/%.c
+build/obj/%.o: src/%.c
 	@echo "\n[\033[34mINFO \033[0m] Compile '$@'"
-	@mkdir -p $(shell dirname build/$*)
+	@mkdir -p $(shell dirname build/obj/$*)
 	$(CC) -c -o $@ $< $(CFLAGS) $(INCDIRS) \
 
-build/entrypoint/gateleenResclone$(BINEXT): \
-		build/array/array.o \
-		build/entrypoint/gateleenResclone.o \
-		build/gateleen_resclone/gateleen_resclone.o \
-		build/log/log.o \
-		build/mime/mime.o \
-		build/util_term/util_term.o
+build/bin/gateleenResclone$(BINEXT): \
+		build/obj/entrypoint/gateleenResclone.o \
+		build/lib/libGateleenResclone$(LIBSEXT)
 	@echo "\n[\033[34mINFO \033[0m] Linking '$@'"
 	@mkdir -p $(shell dirname $@)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LIBSDIR) \
 		-larchive -lcurl -lyajl $(LPCREPOSIX) $(LPCRE) \
 
+build/lib/libGateleenResclone$(LIBSEXT): \
+		build/obj/array/array.o \
+		build/obj/gateleen_resclone/gateleen_resclone.o \
+		build/obj/log/log.o \
+		build/obj/mime/mime.o \
+		build/obj/util_term/util_term.o
+	@echo "\n[\033[34mINFO \033[0m] Archive '$@'"
+	@mkdir -p $(shell dirname $@)
+	$(AR) -crs $@ $^
 
 .PHONY: dist
 dist: clean link
 	@echo "\n[\033[34mINFO \033[0m] Package"
 	@mkdir -p build dist
-	@rm -rf build/GateleenResclone-$(PROJECT_VERSION)
+	@rm -rf build/dist-*
 	@echo
 	@bash -c 'if [[ -n `git status --porcelain` ]]; then echo "[ERROR] Worktree not clean as it should be (see: git status)"; exit 1; fi'
 	# Source bundle.
-	git archive --format=tar "--prefix=GateleenResclone-$(PROJECT_VERSION)/" HEAD | tar -C build -x
+	git archive --format=tar "--prefix=dist-src/" HEAD | tar -C build -x
 	@echo
-	rm -f build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
-	echo "version=$(PROJECT_VERSION)"    >> build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
-	echo "builtAt=$(shell date -Is)"     >> build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
-	git log -n1 HEAD | sed -re "s,^,; ," >> build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
+	rm -f build/dist-src/MANIFEST.INI
+	echo "version=$(PROJECT_VERSION)"    >> build/dist-src/MANIFEST.INI
+	echo "builtAt=$(shell date -Is)"     >> build/dist-src/MANIFEST.INI
+	git log -n1 HEAD | sed -re "s,^,; ," >> build/dist-src/MANIFEST.INI
 	@echo
-	(cd build/GateleenResclone-$(PROJECT_VERSION) && find . -type f -exec md5sum -b {} \;) > build/checksums.md5
-	mv build/checksums.md5 build/GateleenResclone-$(PROJECT_VERSION)/checksums.md5
-	tar --owner=0 --group=0 -czf dist/GateleenResclone-$(PROJECT_VERSION).tgz -C build GateleenResclone-$(PROJECT_VERSION)
+	(cd build/dist-src && find . -type f -exec md5sum -b {} \;) > build/checksums.md5
+	mv build/checksums.md5 build/dist-src/checksums.md5
+	(cd build/dist-src && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION).tgz *)
 	@echo
 	@# Executable bundle.
-	rm -rf   build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)
-	mkdir -p build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)
-	mv -t build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN) \
-		build/GateleenResclone-$(PROJECT_VERSION)/README* \
-		build/GateleenResclone-$(PROJECT_VERSION)/LICENCE* \
-		build/GateleenResclone-$(PROJECT_VERSION)/MANIFEST.INI
-	mkdir build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)/bin
-	mv -t build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)/bin \
-		$(shell find build -name "*$(BINEXT)")
-	(cd build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN) && find . -type f -exec md5sum -b {} \;) > build/checksums.md5
-	mv build/checksums.md5 build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)/checksums.md5
-	tar --owner=0 --group=0 -czf dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN).tgz \
-		-C build GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)
+	rm -rf   build/dist-bin && mkdir -p build/dist-bin
+	mv -t build/dist-bin \
+		build/dist-src/README* \
+		build/dist-src/LICENCE* \
+		build/dist-src/MANIFEST.INI
+	mkdir build/dist-bin/bin
+	mv -t build/dist-bin/bin \
+		build/bin/gateleenResclone$(BINEXT)
+	(cd build/dist-bin && find . -type f -exec md5sum -b {} \;) > build/checksums.md5
+	mv build/checksums.md5 build/dist-bin/checksums.md5
+	(cd build/dist-bin && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN).tgz *)
 	@echo "\n[\033[34mINFO \033[0m] DONE: Artifacts created and placed in 'dist'."
 	@# Dependency Bundle.
-	$(eval PCKROOT := build/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)-rt)
+	$(eval PCKROOT := build/dist-rt)
 	@bash -c 'if [ ".exe" = "$(BINEXT)" ]; then \
 		rm -rf ./$(PCKROOT); \
 		mkdir -p ./$(PCKROOT)/bin; \
@@ -120,8 +125,7 @@ dist: clean link
 		cp external/$(TOOLCHAIN)/rt/bin/*pthread*.dll $(PCKROOT)/bin/libwinpthread-1.dll; \
 		(cd $(PCKROOT) && find . -type f -exec md5sum -b {} \;) > build/checksums.md5; \
 		mv build/checksums.md5 $(PCKROOT)/checksums.md5; \
-		tar --owner=0 --group=0 -czf dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)-rt.tgz \
-			-C build GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)-rt; \
+		(cd build/dist-rt && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)-rt.tgz *); \
 	fi'
 	@echo
 	@echo See './dist/' for result.
