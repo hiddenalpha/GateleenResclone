@@ -45,25 +45,34 @@ From "gateleenResclone --help":
 
 ## Dependencies
 
-- libcurl     7.67.0 "http://curl.haxx.se/libcurl"
-- libyajl     2.1.0  "http://lloyd.github.io/yajl"
-- libarchive  3.3.3  "https://www.libarchive.org/"
+- libcurl     7.67.0  "http://curl.haxx.se/libcurl"
+- libyajl     2.1.0   "http://lloyd.github.io/yajl"
+- libarchive  3.3.3   "https://www.libarchive.org/"
 
 If you prefer to NOT cluttering your system with tons of never again used
 packages, you have the option to provide the dependencies from within the
 project tree itself. For this, place the files as described below.
 
-+------------------------------------------------------------------------------
-| external/
-|  '- lxGcc64/
-|      |- include/
-|      |   |- curl/
-|      |   |   '- {curl.h, easy.h, multi.h, ...}
-|      |   |- yajl/
-|      |   |   '- {yajl_gen.h, yajl_parse.h, ...}
-|      |   |- archive.h
-|      |   '- archive_entry.h
-|      '- lib/
-|          '- {libarchive.a, libcurl.a, libyajl.a, libz.a}
-+------------------------------------------------------------------------------
+    external/lxGcc64/
+     |- include/
+     |   |- curl/{curl.h, easy.h, multi.h, ...}
+     |   |- yajl/{yajl_parse.h, yajl_common.h, ...}
+     |   |- archive.h
+     |   '- archive_entry.h
+     '- lib/
+         '- {libyajl.so, ...}
+
+Or for windoof:
+
+    external/mingw64/
+     |- rt/bin/
+     |       |- pthreadGC2.dll  libcurl-4.dll  libarchive-13.dll  libpcre-1.dll
+     |       '- libpcreposix-0.dll  libiconv-2.dll
+     |- include/
+     |   |- yajl/{yajl_parse.h, yajl_common.h, ...}
+     |   |- curl/{curl.h, easy.h, ...}
+     |   |- archive.h
+     |   |- archive_entry.h
+     |   '- pcreposix.h
+     '- lib/{libarchive.a, libarchive.dll.a, libcurl.a, libcurl.dll.a, ...}
 

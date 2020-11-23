@@ -107,7 +107,7 @@ dist: clean link
 		build/dist-src/MANIFEST.INI
 	mkdir build/dist-bin/bin
 	mv -t build/dist-bin/bin \
-		build/bin/gateleenResclone$(BINEXT)
+		build/bin/gateleen-resclone$(BINEXT)
 	(cd build/dist-bin && find . -type f -exec md5sum -b {} \;) > build/checksums.md5
 	mv build/checksums.md5 build/dist-bin/checksums.md5
 	(cd build/dist-bin && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN).tgz *)
