@@ -47,8 +47,8 @@ endif
 
 default: dist
 
-link:                                   \
-	build/bin/gateleenResclone$(BINEXT) \
+link:                                    \
+	build/bin/gateleen-resclone$(BINEXT) \
 
 .PHONY: clean
 clean:
@@ -62,7 +62,7 @@ build/obj/%.o: src/%.c
 	@mkdir -p $(shell dirname build/obj/$*)
 	$(CC) -c -o $@ $< $(CFLAGS) $(INCDIRS) \
 
-build/bin/gateleenResclone$(BINEXT): \
+build/bin/gateleen-resclone$(BINEXT): \
 		build/obj/entrypoint/gateleenResclone.o \
 		build/lib/libGateleenResclone$(LIBSEXT)
 	@echo "\n[\033[34mINFO \033[0m] Linking '$@'"
