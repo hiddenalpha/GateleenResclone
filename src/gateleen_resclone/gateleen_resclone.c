@@ -260,10 +260,10 @@ parseArgs( int argc, char**argv, opMode_t*mode, char**url, regex_t**filter, size
             if( iSegm >= filter_cap ){
                 filter_cap += 8;
                 *filter = realloc( *filter, filter_cap*sizeof(**filter) );
-                LOG_DEBUG("%s%u%s%p\n", "realloc( NULL, ", filter_cap*sizeof(**filter)," ) -> ", *filter );
+                //LOG_DEBUG("%s%u%s%p\n", "realloc( NULL, ", filter_cap*sizeof(**filter)," ) -> ", *filter );
                 if( !*filter ){ LOG_ERROR("%s%d%s\n","realloc(",filter_cap*sizeof(**filter),")"); ret=-ENOMEM; goto fail; }
             }
-            LOG_DEBUG("%s%d%s%s%s\n", "filter[", iSegm, "] -> '", beg-1, "'");
+            //LOG_DEBUG("%s%d%s%s%s\n", "filter[", iSegm, "] -> '", beg-1, "'");
             err = regcomp( (*filter)+iSegm, beg-1, REG_EXTENDED);
             if( err ){ LOG_ERROR("%s%s%s%d\n","regcomp(",beg,") -> ", err); return -1; }
             // Restore surrounding stuff.
@@ -437,10 +437,10 @@ static ssize_t pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*reso
         // Check if we even have such a long filter at all.
         if( idx >= dload->this->filter_len ){
             if( dload->this->isFilterFull ){
-                LOG_DEBUG("%s\n", "Path longer than --filter-full -> reject.");
+                //LOG_DEBUG("%s\n", "Path longer than --filter-full -> reject.");
                 ret = 0; goto finally;
             }else{
-                LOG_DEBUG("%s\n", "Path longer than --filter-part -> accept.");
+                //LOG_DEBUG("%s\n", "Path longer than --filter-part -> accept.");
                 ret = 1; goto finally;
             }
         }
@@ -450,15 +450,15 @@ static ssize_t pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*reso
             restoreEndSlash = true;
             name[name_len-1] = '\0';
         }
-        LOG_DEBUG("%s%u%s%s%s\n", "idx=",idx," name='", name, "'");
+        //LOG_DEBUG("%s%u%s%s%s\n", "idx=",idx," name='", name, "'");
         regex_t *filterArr = dload->this->filter;
         regex_t *r = filterArr + (idx);
         err = regexec( r, name, 0, 0, 0 );
         if( ! err ){
-            LOG_DEBUG("%s\n", "Segment accepted by filter.");
+            //LOG_DEBUG("%s\n", "Segment accepted by filter.");
             ret = 1;
         }else if( err==REG_NOMATCH ){
-            LOG_DEBUG("%s\n", "Segment rejected by filter.");
+            //LOG_DEBUG("%s\n", "Segment rejected by filter.");
             ret = 0;
         }else{
             LOG_ERROR("%s%.*s%s%d\n", "regexec(rgx, '",(int)name_len,name,"') -> ", err );
@@ -660,7 +660,7 @@ onUploadChunkRequested( char*buf , size_t size , size_t count , void*cls_put_ )
     ssize_t ret = buf_len;
 
     ssize_t readLen = archive_read_data(upload->srcArchive, buf, buf_len);
-    LOG_DEBUG("%s%lu%s\n", "Cpy ",readLen," bytes.");
+    //LOG_DEBUG("%s%lu%s\n", "Cpy ",readLen," bytes.");
     if( readLen<0 ){
         LOG_ERROR("%s%ld%s%s\n", "Failed to read from archive (code ",readLen,"): ", archive_error_string(upload->srcArchive));
         assert(0); ret=-1; goto endFn;
@@ -676,7 +676,7 @@ onUploadChunkRequested( char*buf , size_t size , size_t count , void*cls_put_ )
 
 
     endFn:
-    LOG_DEBUG("%s%s%ld\n", __func__, "() -> ", ret);
+    //LOG_DEBUG("%s%s%ld\n", __func__, "() -> ", ret);
     return ret>=0 ? ret : CURL_READFUNC_ABORT;
 }
 
@@ -698,18 +698,18 @@ addContentTypeHeader( cls_put_t*put , struct curl_slist *reqHdrs )
     if( *ext=='.' ){
         mimeType = fileExtToMime( ext+1 ); // <- +1, to skip the (useless) dot.
         if( mimeType ){
-            LOG_DEBUG("%s%s%s%s%s\n", "Resolved file ext '", ext+1,"' to mime '", mimeType?mimeType:"<null>", "'.");
+            //LOG_DEBUG("%s%s%s%s%s\n", "Resolved file ext '", ext+1,"' to mime '", mimeType?mimeType:"<null>", "'.");
         }
     }
     else if( *ext=='/' || ext==name || *ext=='\0' ){ // TODO Explain why 0x00.
         mimeType = "application/json";
-        LOG_DEBUG("%s\n", "No file extension. Fallback to json (gateleen default)");
+        //LOG_DEBUG("%s\n", "No file extension. Fallback to json (gateleen default)");
     }
     else{
         mimeType = NULL;
     }
     if( mimeType==NULL ){
-        LOG_DEBUG("%s%s%s\n", "Unknown file extension '", ext+1, "'. Will NOT add Content-Type header.");
+        //LOG_DEBUG("%s%s%s\n", "Unknown file extension '", ext+1, "'. Will NOT add Content-Type header.");
         mimeType = ""; // <- Need to 'remove' header. To do this, pass an empty value to curl.
     }
     uint_t mimeType_len = strlen( mimeType );
@@ -759,7 +759,7 @@ httpPutEntry( cls_put_t*put )
     if( rspCode<=199 || rspCode>=300 ){
         LOG_WARN("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
     }else{
-        LOG_DEBUG("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
+        //LOG_DEBUG("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
     }
 
     endFn:
@@ -801,7 +801,7 @@ readArchive( cls_upload_t*upload )
             LOG_WARN("%s%s%s\n", "Ignore non-regular file '", name, "'");
             continue;
         }
-        LOG_DEBUG("%s%s%s\n", "Reading '",name,"'");
+        //LOG_DEBUG("%s%s%s\n", "Reading '",name,"'");
         cls_put_t _1={
             .upload = upload,
             .name = (char*)name
