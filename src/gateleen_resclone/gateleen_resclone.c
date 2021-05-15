@@ -15,7 +15,7 @@
 #include "archive.h"
 #include "archive_entry.h"
 #include <curl/curl.h>
-#include <yajl/yajl_parse.h>
+#include <cJSON.h>
 
 /* Project */
 #include "array.h"
@@ -67,13 +67,13 @@ typedef struct cls_dload {
 /** Closure for a collection (directory) download. */
 typedef struct cls_resourceDir {
     struct cls_dload *dload;
-    yajl_handle yajl;
+    //yajl_handle yajl; <- TODO Obsolete
     struct cls_resourceDir *parentDir;
+    char *rspBody;
+    size_t rspBody_len;
+    size_t rspBody_cap;
     short rspCode;
     char *name;
-    char **childNames;
-    size_t childNames_count;
-    size_t childNames_size;
 } cls_resourceDir_t;
 
 
@@ -260,10 +260,10 @@ parseArgs( int argc, char**argv, opMode_t*mode, char**url, regex_t**filter, size
             if( iSegm >= filter_cap ){
                 filter_cap += 8;
                 *filter = realloc( *filter, filter_cap*sizeof(**filter) );
-                //LOG_DEBUG("%s%u%s%p\n", "realloc( NULL, ", filter_cap*sizeof(**filter)," ) -> ", *filter );
+                LOG_DEBUG("%s%u%s%p\n", "realloc( NULL, ", filter_cap*sizeof(**filter)," ) -> ", *filter );
                 if( !*filter ){ LOG_ERROR("%s%d%s\n","realloc(",filter_cap*sizeof(**filter),")"); ret=-ENOMEM; goto fail; }
             }
-            //LOG_DEBUG("%s%d%s%s%s\n", "filter[", iSegm, "] -> '", beg-1, "'");
+            LOG_DEBUG("%s%d%s%s%s\n", "filter[", iSegm, "] -> '", beg-1, "'");
             err = regcomp( (*filter)+iSegm, beg-1, REG_EXTENDED);
             if( err ){ LOG_ERROR("%s%s%s%d\n","regcomp(",beg,") -> ", err); return -1; }
             // Restore surrounding stuff.
@@ -296,36 +296,15 @@ parseArgs( int argc, char**argv, opMode_t*mode, char**url, regex_t**filter, size
 }
 
 
-static int
-onYajlString(void*cls_resourceDir_, const unsigned char*str_, size_t str_len)
-{
-    ssize_t err, ret=str_len;
-    cls_resourceDir_t *resourceDir = cls_resourceDir_;
-    const char *str = (void*)str_;
-
-    //LOG_DEBUG("%s%s%.*s%s\n", __func__, "(): Add dirent '",(int)str_len,str,"'");
-
-    char *newStr = malloc( str_len +1 );
-    memcpy( newStr, str, str_len );
-    newStr[str_len] = '\0';
-    err = array_add_str( &resourceDir->childNames, &resourceDir->childNames_count, &resourceDir->childNames_size, newStr );
-    //err = arrStr_add( &resourceDir->childNames , &resourceDir->childNames_count , &resourceDir->childNames_size , &newStr );
-    if( err ){ assert(!err); ret=-1; goto endFn; }
-
-    endFn:
-    return ret;
-}
-
-
 static size_t
 onCurlDirRsp( char*buf , size_t size , size_t nmemb , void*cls_resourceDir_ )
 {
+    //LOG_DEBUG( "%s%s%p%s%ld%s%ld%s%p%s\n" , __func__, "( buf=", buf, ", size=", size, ", nmemb=", nmemb, ", cls=", cls_resourceDir_, " )" );
     ssize_t err, ret = size*nmemb;
     cls_resourceDir_t *resourceDir = cls_resourceDir_;
     cls_dload_t *dload = resourceDir->dload;
     CURL *curl = dload->curl;
     const size_t buf_len = size * nmemb;
-    unsigned char *bufUnsigned = (void*)buf;
 
     long rspCode;
     curl_easy_getinfo( curl, CURLINFO_RESPONSE_CODE, &rspCode );
@@ -334,14 +313,18 @@ onCurlDirRsp( char*buf , size_t size , size_t nmemb , void*cls_resourceDir_ )
         goto endFn;
     }
 
-    err = yajl_parse(resourceDir->yajl, bufUnsigned, buf_len);
-    if( err ){
-        unsigned char *errMsg = yajl_get_error(resourceDir->yajl, /*verbose=*/1, bufUnsigned, buf_len);
-        LOG_WARN("%s%ld%s%s\n", "Failed to parse dir listing (code ",err,"): ", errMsg);
-        yajl_free_error( resourceDir->yajl , errMsg );
-        resourceDir->rspCode = ERR_PARSE_DIR_LIST;
-        goto endFn;
+    // Collect whole response body into one buf (as cJSON seems unable to parse
+    // partially)
+    if( resourceDir->rspBody_cap < resourceDir->rspBody_len + buf_len +1 ){
+        // Enlarge buf
+        resourceDir->rspBody_cap = resourceDir->rspBody_len + buf_len + 1024;
+        resourceDir->rspBody = realloc( resourceDir->rspBody, resourceDir->rspBody_cap );
     }
+    memcpy( resourceDir->rspBody+resourceDir->rspBody_len, buf, buf_len );
+    resourceDir->rspBody_len += buf_len;
+    resourceDir->rspBody[resourceDir->rspBody_len] = '\0';
+
+    // Parsing occurs in the caller, as soon we processed whole response.
 
     endFn:
     return ret;
@@ -441,11 +424,10 @@ copyBufToArchive( cls_resourceFile_t*resourceFile )
 
 
 /** @return 0:Reject, 1:Accept, <0:ERROR */
-static ssize_t
-pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*resourceDir, size_t childIdx )
+static ssize_t pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*resourceDir, const char*nameOrig )
 {
     ssize_t err, ret=1; // <- Accept per default.
-    char *name = resourceDir->childNames[childIdx];
+    char *name = strdup( nameOrig );
     uint_t name_len = strlen( name );
 
     if( dload->this->filter ){
@@ -455,10 +437,10 @@ pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*resourceDir, size_t
         // Check if we even have such a long filter at all.
         if( idx >= dload->this->filter_len ){
             if( dload->this->isFilterFull ){
-                //LOG_DEBUG("%s\n", "Path longer than --filter-full -> reject.");
+                LOG_DEBUG("%s\n", "Path longer than --filter-full -> reject.");
                 ret = 0; goto finally;
             }else{
-                //LOG_DEBUG("%s\n", "Path longer than --filter-part -> accept.");
+                LOG_DEBUG("%s\n", "Path longer than --filter-part -> accept.");
                 ret = 1; goto finally;
             }
         }
@@ -468,15 +450,15 @@ pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*resourceDir, size_t
             restoreEndSlash = true;
             name[name_len-1] = '\0';
         }
-        //LOG_DEBUG("%s%u%s%s%s\n", "idx=",idx," name='", name, "'");
+        LOG_DEBUG("%s%u%s%s%s\n", "idx=",idx," name='", name, "'");
         regex_t *filterArr = dload->this->filter;
         regex_t *r = filterArr + (idx);
         err = regexec( r, name, 0, 0, 0 );
         if( ! err ){
-            //LOG_DEBUG("%s\n", "Segment accepted by filter.");
+            LOG_DEBUG("%s\n", "Segment accepted by filter.");
             ret = 1;
         }else if( err==REG_NOMATCH ){
-            //LOG_DEBUG("%s\n", "Segment rejected by filter.");
+            LOG_DEBUG("%s\n", "Segment rejected by filter.");
             ret = 0;
         }else{
             LOG_ERROR("%s%.*s%s%d\n", "regexec(rgx, '",(int)name_len,name,"') -> ", err );
@@ -487,7 +469,10 @@ pathFilterAcceptsEntry( cls_dload_t*dload, cls_resourceDir_t*resourceDir, size_t
         }
         goto finally;
     }
-    finally: return ret;
+
+    finally:
+    free( name );
+    return ret;
 }
 
 
@@ -499,6 +484,7 @@ gateleenResclone_download( cls_dload_t*dload , cls_resourceDir_t*parentResourceD
     ssize_t err, ret=0;
     char *url = NULL;
     int url_len = 0;
+    cJSON *jsonRoot = NULL;
     int resUrl_len = 0;
     cls_resourceDir_t *resourceDir = NULL;
     cls_resourceFile_t *resourceFile = NULL;
@@ -513,10 +499,6 @@ gateleenResclone_download( cls_dload_t*dload , cls_resourceDir_t*parentResourceD
     resourceDir->dload = dload;
     resourceDir->parentDir = parentResourceDir;
     resourceDir->name = strdup( entryName );
-
-    static yajl_callbacks yajlCbacks = {0};
-    yajlCbacks.yajl_string = onYajlString;
-    resourceDir->yajl = yajl_alloc( &yajlCbacks , NULL , resourceDir );
 
     // Configure client
     {
@@ -559,35 +541,56 @@ gateleenResclone_download( cls_dload_t*dload , cls_resourceDir_t*parentResourceD
         goto finally;
     }
 
-    err = yajl_complete_parse( resourceDir->yajl );
-    if( err ){
-        LOG_ERROR("%s\n", "Failed to parse response json.");
-        assert( !err );
-        ret=-1; goto finally;
+    // Parse the collected response body.
+    // I would like to NOT rely on zero-terminated strings. But did not find any
+    // better API for this yet.
+    jsonRoot = cJSON_Parse( resourceDir->rspBody );
+    if( ! cJSON_IsObject(jsonRoot) ){ // TODO: Handle case
+        LOG_ERROR("%s\n", "JSON root expected to be object but is not.");
+        err = -1; goto finally;
     }
 
+    // Do some validations to get to the payload we're interested in.
+    if( cJSON_GetArraySize(jsonRoot) != 1 ){
+        LOG_ERROR("%s%d\n", "JSON root expected ONE child but got ", cJSON_GetArraySize(jsonRoot) );
+        err = -1; goto finally;
+    }
+    cJSON *data = jsonRoot->child;
+    //LOG_DEBUG( "%s%s%s\n", "Processing json['", data->string, "']" );
+    if( ! cJSON_IsArray(data) ){
+        LOG_ERROR("%s%s%s\n", "json['", data->string,"'] expected to be an array. But is not." );
+        err = -1; goto finally;
+    }
+
+    // Iterate all the entries we have to process.
     cls_resourceFile_t _2={0}; resourceFile =&_2;
     resourceFile->dload = dload;
-    for( unsigned i=0 ; i<resourceDir->childNames_count ; ++i ){
-        char *name = resourceDir->childNames[i];
+    uint_t iDirEntry = 0;
+    for( cJSON *arrEntry=data->child ; arrEntry!=NULL ; arrEntry=arrEntry->next ){
+        if( ! cJSON_IsString(arrEntry) ){
+            LOG_ERROR("%s%s%u%s\n", data->string,"['", iDirEntry,"'] expected to be a string. But is not." );
+            err = -1; goto finally;
+        }
+        //LOG_DEBUG("%s%s%u%s%s%s\n", data->string, "[", iDirEntry, "] -> ", arrEntry->valuestring, "");
+        char *name = arrEntry->valuestring;
         int name_len = strlen( name );
 
-        err = pathFilterAcceptsEntry( dload, resourceDir, i );
+        err = pathFilterAcceptsEntry( dload, resourceDir, name );
         if( err<0 ){ // ERROR
             ret = err; goto finally;
         }else if( err==0 ){ // REJECT
-            LOG_INFO("%s%s%s%s\n", "Skip     '", url,resourceDir->childNames[i],"'  (filtered)");
+            LOG_INFO("%s%s%s%s\n", "Skip     '", url, name, "'  (filtered)");
             continue;
         }else{ // ACCEPT
             // Go ahead.
         }
 
-        if( name[name_len-1]=='/' ){
-            LOG_DEBUG("%s%s%s%s\n", "Scan     '", url, name,"'");
+        if( name[name_len-1]=='/' ){ // Gateleen reports a 'directory'
+            //LOG_DEBUG("%s%s%s%s\n", "Scan     '", url, name,"'");
             err = gateleenResclone_download( dload , resourceDir , name );
             if( err ){ ret=err; goto finally; }
         }
-        else{
+        else{ // Not a 'dir'? Then assume 'file'
             int requiredLen = url_len + 1/*slash*/ + name_len;
             if( resUrl_len < requiredLen ){
                 resourceFile->url = realloc( resourceFile->url , requiredLen +1 );
@@ -599,20 +602,19 @@ gateleenResclone_download( cls_dload_t*dload , cls_resourceDir_t*parentResourceD
             collectResourceIntoMemory( resourceFile , resourceFile->url );
             copyBufToArchive( resourceFile );
         }
+
+        iDirEntry += 1;
     }
 
     finally:
+    if( jsonRoot != NULL ){ cJSON_Delete(jsonRoot); }
     if( resourceFile ){
         free(resourceFile->buf); resourceFile->buf = NULL;
         free( resourceFile->url ); resourceFile->url = NULL;
     }
     if( resourceDir ){
-        yajl_free( resourceDir->yajl ); resourceDir->yajl = NULL;
         free( resourceDir->name ); resourceDir->name = NULL;
-        for( size_t i=0 ; i<resourceDir->childNames_count ; ++i ){
-            free( resourceDir->childNames[i] ); resourceDir->childNames[i] = NULL;
-        }
-        free( resourceDir->childNames ); resourceDir->childNames = NULL;
+        free( resourceDir->rspBody ); resourceDir->rspBody = NULL;
     }
     free( url );
     return ret;
@@ -624,14 +626,9 @@ this_free( this_t*this )
 {
     if( this==NULL ) return;
 
-    //for( dirEntry_t*dirent=this->dirStack ; dirent ;){
-    //    for( size_t iChild=0 ; iChild<dirent->names_count ; ++iChild ){
-    //        free( dirent->names[iChild] ); dirent->names[iChild] = NULL;
-    //    }
-    //    free( dirent->names ); dirent->names = NULL;
-    //    free( dirent->name ); dirent->name = NULL;
-    //    { void*n=dirent->parent; free(dirent); dirent=n; }
-    //}
+    // TODO need free? -> char *url;
+    // TODO need free? -> regex_t *filter;
+    // TODO need free? -> char *file;
 
     free( this );
 }
@@ -663,7 +660,7 @@ onUploadChunkRequested( char*buf , size_t size , size_t count , void*cls_put_ )
     ssize_t ret = buf_len;
 
     ssize_t readLen = archive_read_data(upload->srcArchive, buf, buf_len);
-    //LOG_DEBUG("%s%lu%s\n", "Cpy ",readLen," bytes.");
+    LOG_DEBUG("%s%lu%s\n", "Cpy ",readLen," bytes.");
     if( readLen<0 ){
         LOG_ERROR("%s%ld%s%s\n", "Failed to read from archive (code ",readLen,"): ", archive_error_string(upload->srcArchive));
         assert(0); ret=-1; goto endFn;
@@ -679,7 +676,7 @@ onUploadChunkRequested( char*buf , size_t size , size_t count , void*cls_put_ )
 
 
     endFn:
-    //LOG_DEBUG("%s%s%ld\n", __func__, "() -> ", ret);
+    LOG_DEBUG("%s%s%ld\n", __func__, "() -> ", ret);
     return ret>=0 ? ret : CURL_READFUNC_ABORT;
 }
 
@@ -762,7 +759,7 @@ httpPutEntry( cls_put_t*put )
     if( rspCode<=199 || rspCode>=300 ){
         LOG_WARN("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
     }else{
-        //LOG_DEBUG("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
+        LOG_DEBUG("%s%ld%s%s%s\n", "Got RspCode ", rspCode, " for 'PUT ", url, "'");
     }
 
     endFn:
@@ -804,7 +801,7 @@ readArchive( cls_upload_t*upload )
             LOG_WARN("%s%s%s\n", "Ignore non-regular file '", name, "'");
             continue;
         }
-        //LOG_DEBUG("%s%s%s\n", "Reading '",name,"'");
+        LOG_DEBUG("%s%s%s\n", "Reading '",name,"'");
         cls_put_t _1={
             .upload = upload,
             .name = (char*)name

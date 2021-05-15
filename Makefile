@@ -68,7 +68,7 @@ build/bin/gateleen-resclone$(BINEXT): \
 	@echo "\n[\033[34mINFO \033[0m] Linking '$@'"
 	@mkdir -p $(shell dirname $@)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LIBSDIR) \
-		-larchive -lcurl -lyajl $(LPCREPOSIX) $(LPCRE) \
+		-larchive -lcurl -lcJSON $(LPCREPOSIX) $(LPCRE) \
 
 build/lib/libGateleenResclone$(LIBSEXT): \
 		build/obj/array/array.o \
