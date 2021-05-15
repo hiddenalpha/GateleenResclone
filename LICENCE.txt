@@ -1,5 +1,9 @@
 
-Copyright 2020, Andreas Fankhauser. All rights reserved. 
+Copyright 2020-2021, Andreas Fankhauser. All rights reserved.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
 
   THIS WORK IS  PROVIDED BY  THE AUTHOR(S)  "AS IS"  AND ANY EXPRESS OR IMPLIED
 WARRANTIES,   INCLUDING,  BUT  NOT  LIMITED  TO,  THE  IMPLIED   WARRANTIES  OF
@@ -11,5 +15,4 @@ INTERRUPTION)  HOWEVER  CAUSED  AND  ON  ANY  THEORY OF  LIABILITY,  WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY
 OF SUCH DAMAGE.
-
 
