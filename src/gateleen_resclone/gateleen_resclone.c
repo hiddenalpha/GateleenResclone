@@ -22,8 +22,11 @@
 #include "util_string.h"
 
 
-/* Types *********************************************************************/
-
+#if __WIN32
+#   define FMT_SIZE_T "%llu"
+#else
+#   define FMT_SIZE_T "%lu"
+#endif
 #define ERR_PARSE_DIR_LIST -2
 
 
@@ -255,14 +258,14 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
                 //fprintf(stderr, "%s%u%s%p\n",
                 //    "[DEBUG] realloc(NULL, ", filter_cap*sizeof**filter," ) -> ", tmp);
                 if( tmp == NULL ){
-                    fprintf(stderr, "%s%llu%s\n", "[ERROR] realloc(", filter_cap*sizeof**filter, ")");
+                    fprintf(stderr, "%s"FMT_SIZE_T"%s\n", "[ERROR] realloc(", filter_cap*sizeof**filter, ")");
                     err = -ENOMEM; goto fail; }
                 *filter = tmp;
             }
             //fprintf(stderr, "%s%d%s%s%s\n", "[DEBUG] filter[", iSegm, "] -> '", beg-1, "'");
             err = regcomp((*filter)+iSegm, beg-1, REG_EXTENDED);
             if( err ){
-                fprintf(stderr, "%s%s%s%lld\n", "[ERROR] regcomp(", beg, ") -> ", err);
+                fprintf(stderr, "%s%s%s"FMT_SIZE_T"\n", "[ERROR] regcomp(", beg, ") -> ", err);
                 err = -1; goto fail; }
             /* Restore surrounding stuff. */
             beg[-1] = origBeg;
@@ -297,7 +300,7 @@ fail:
 
 static size_t onCurlDirRsp( char*buf, size_t size, size_t nmemb, void*ResourceDir_ ){
     int err;
-    fprintf(stderr, "%s%s%s%p%s%lld%s%lld%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
+    fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
         ", size=", size, ", nmemb=", nmemb, ", cls=", ResourceDir_, " )");
     ResourceDir *resourceDir = ResourceDir_;
     ClsDload *dload = resourceDir->dload;
@@ -366,7 +369,7 @@ static ssize_t collectResourceIntoMemory( ResourceFile*resourceFile, char*url ){
 
     err = curl_easy_perform(curl);
     if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s%s%s%lld%s%s\n", "[ERROR] ", __func__, "(): '",
+        fprintf(stderr, "%s%s%s%s%s"FMT_SIZE_T"%s%s\n", "[ERROR] ", __func__, "(): '",
             url, "' (code ", err, "): ", curl_easy_strerror(err));
         err = -1; goto endFn;
     }
@@ -413,7 +416,7 @@ static ssize_t copyBufToArchive( ResourceFile*resourceFile ){
             archive_error_string(dload->dstArchive));
         err = -1; goto endFn;
     }else if( written != resourceFile->buf_len ){
-        fprintf(stderr, "%s%u%s%llu\n", "[ERROR] archive_write_data failed to write all ",
+        fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
             resourceFile->buf_len, " bytes. Instead it wrote ", written);
         err = -1; goto endFn;
     }
@@ -462,7 +465,7 @@ static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, 
             //fprintf(stderr, "%s\n", "[DEBUG] Segment rejected by filter.");
             err = 0; /* fall to restoreEndSlash */
         }else{
-            fprintf(stderr, "%s%.*s%s%lld\n", "[ERROR] regexec(rgx, '", (int)name_len, name, "') -> ", err);
+            fprintf(stderr, "%s%.*s%s"FMT_SIZE_T"\n", "[ERROR] regexec(rgx, '", (int)name_len, name, "') -> ", err);
             err = -1; /* fall to restoreEndSlash */
         }
         if( restoreEndSlash ){
@@ -527,7 +530,7 @@ static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentRes
 
     err = curl_easy_perform(dload->curl);
     if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s%lld%s%s\n",
+        fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
             "[ERROR] '", url, "' (code ", err, "): ", curl_easy_strerror(err));
         err = -1; goto endFn;
     }
@@ -663,7 +666,7 @@ static size_t onUploadChunkRequested( char*buf, size_t size, size_t count, void*
     ssize_t readLen = archive_read_data(upload->srcArchive, buf, buf_len);
     //fprintf(stderr, "%s%lu%s\n", "[DEBUG] Cpy ", readLen, " bytes.");
     if( readLen < 0 ){
-        fprintf(stderr, "%s%lld%s%s\n", "[ERROR] Failed to read from archive (code ",
+        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to read from archive (code ",
             readLen, "): ", archive_error_string(upload->srcArchive));
         err = -1; goto endFn;
     }else if( readLen > 0 ){
@@ -718,7 +721,7 @@ static ssize_t addContentTypeHeader( Put*put, struct curl_slist *reqHdrs ){
     reqHdrs = curl_slist_append(reqHdrs, contentTypeHdr);
     err = curl_easy_setopt(upload->curl, CURLOPT_HTTPHEADER, reqHdrs);
     if( err ){
-        fprintf(stderr, "%s%lld\n", "[ERROR] curl_easy_setopt(_, HTTPHEADER, _): ", err);
+        fprintf(stderr, "%s"FMT_SIZE_T"\n", "[ERROR] curl_easy_setopt(_, HTTPHEADER, _): ", err);
         assert(!err); err = -1; goto endFn; }
 
     err = 0;
@@ -752,7 +755,7 @@ static ssize_t httpPutEntry( Put*put ){
     fprintf(stderr, "%s%s%s\n", "[INFO ] Upload '", url, "'");
     err = curl_easy_perform(upload->curl);
     if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s%lld%s%s\n",
+        fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
             "[ERROR] PUT '", url, "' (code ", err, "): ", curl_easy_strerror(err));
         err = -1; goto endFn;
     }
@@ -786,7 +789,7 @@ static ssize_t readArchive( Upload*upload ){
        || archive_read_open_filename(upload->srcArchive, upload->archiveFile, blockSize)
        ;
     if( err ){
-        fprintf(stderr, "%s%lld%s%s\n", "[ERROR] Failed to open src archive (code ", err, "): ",
+        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to open src archive (code ", err, "): ",
             curl_easy_strerror(err));
         err = -1; goto endFn;
     }
@@ -849,7 +852,7 @@ static ssize_t pull( Resclone*resclone ){
         err = -1; goto endFn; }
 
     if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
-        fprintf(stderr, "%s%lld%s%s\n", "[ERROR] archive_write_close failed (code ",
+        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
             err, "): ", archive_error_string(dload->dstArchive));
         err = -1; goto endFn;
     }
