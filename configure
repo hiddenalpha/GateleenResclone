@@ -1,0 +1,8 @@
+#!/bin/sh
+
+#
+# This file only exists to stay compatible with well-known build
+# workflows. Further, it also prepares just in case it gets required
+# somewhen.
+#
+
