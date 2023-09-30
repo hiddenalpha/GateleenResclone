@@ -1,4 +1,4 @@
-# By using this work you agree to the terms and conditions in 'LICENCE.txt'
+# By using this work you agree to the terms and conditions in 'LICENSE.txt'
 
 Gateleen Resclone
 =================
@@ -49,7 +49,7 @@ From "gateleenResclone --help":
 - libyajl     2.1.0   "http://lloyd.github.io/yajl"
 - libarchive  3.3.3   "https://www.libarchive.org/"
 
-If you prefer to NOT cluttering your system with tons of never again used
+If you prefer to NOT clutter your system with tons of never again used
 packages, you have the option to provide the dependencies from within the
 project tree itself. For this, place the files as described below.
 

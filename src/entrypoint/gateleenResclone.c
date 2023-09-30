@@ -1,4 +1,4 @@
-/* By using this work you agree to the terms and conditions in 'LICENCE.txt' */
+/* By using this work you agree to the terms and conditions in 'LICENSE.txt' */
 
 /* Project */
 #include "gateleen_resclone.h"

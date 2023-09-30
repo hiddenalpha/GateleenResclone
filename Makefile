@@ -1,9 +1,9 @@
-# By using this work you agree to the terms and conditions in 'LICENCE.txt'
+# By using this work you agree to the terms and conditions in 'LICENSE.txt'
 
 CC ?=gcc
 LD ?=ld
 AR ?=ar
-BINEXT ?= .elf
+BINEXT ?=
 LIBSEXT ?= .a
 TOOLCHAIN ?= lxGcc64
 
@@ -26,7 +26,7 @@ LDFLAGS ?= -Wl,--no-demangle,--fatal-warnings
 ifndef NDEBUG
 	CFLAGS := $(CFLAGS) -ggdb -O0 -g3
 else
-	CFLAGS := $(CFLAGS) -ffunction-sections -fdata-sections -O2 "-DNDEBUG=1"
+	CFLAGS := $(CFLAGS) -ffunction-sections -fdata-sections -Os "-DNDEBUG=1"
 	LDFLAGS := $(LDFLAGS) -Wl,--gc-sections,--as-needed
 endif
 
@@ -44,6 +44,7 @@ ifeq ($(BINEXT),.exe)
 	LPCREPOSIX  := -lpcreposix
 endif
 
+.SILENT:
 
 default: dist
 
@@ -68,12 +69,13 @@ build/bin/gateleen-resclone$(BINEXT): \
 	@echo "\n[\033[34mINFO \033[0m] Linking '$@'"
 	@mkdir -p $(shell dirname $@)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LIBSDIR) \
+		-Wl,-Bstatic \
 		-larchive -lcurl -lcJSON $(LPCREPOSIX) $(LPCRE) \
+		-Wl,-Bdynamic \
 
 build/lib/libGateleenResclone$(LIBSEXT): \
 		build/obj/array/array.o \
 		build/obj/gateleen_resclone/gateleen_resclone.o \
-		build/obj/log/log.o \
 		build/obj/mime/mime.o \
 		build/obj/util_term/util_term.o
 	@echo "\n[\033[34mINFO \033[0m] Archive '$@'"
@@ -86,7 +88,7 @@ dist: clean link
 	@mkdir -p build dist
 	@rm -rf build/dist-*
 	@echo
-	@bash -c 'if [[ -n `git status --porcelain` ]]; then echo "[ERROR] Worktree not clean as it should be (see: git status)"; exit 1; fi'
+	@sh -c 'if test -n `git status --porcelain`; then echo "[ERROR] Worktree not clean as it should be (see: git status)"; exit 1; fi'
 	# Source bundle.
 	git archive --format=tar "--prefix=dist-src/" HEAD | tar -C build -x
 	@echo
@@ -103,7 +105,7 @@ dist: clean link
 	rm -rf   build/dist-bin && mkdir -p build/dist-bin
 	mv -t build/dist-bin \
 		build/dist-src/README* \
-		build/dist-src/LICENCE* \
+		build/dist-src/LICENSE* \
 		build/dist-src/MANIFEST.INI
 	mkdir build/dist-bin/bin
 	mv -t build/dist-bin/bin \
@@ -114,7 +116,7 @@ dist: clean link
 	@echo "\n[\033[34mINFO \033[0m] DONE: Artifacts created and placed in 'dist'."
 	@# Dependency Bundle.
 	$(eval PCKROOT := build/dist-rt)
-	@bash -c 'if [ ".exe" = "$(BINEXT)" ]; then \
+	@sh -c 'if test ".exe" = "$(BINEXT)"; then \
 		rm -rf ./$(PCKROOT); \
 		mkdir -p ./$(PCKROOT)/bin; \
 		cp external/$(TOOLCHAIN)/rt/bin/libarchive-13.dll $(PCKROOT)/bin/; \
