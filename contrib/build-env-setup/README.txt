@@ -78,7 +78,7 @@ true \
   && PKGINIT=true \
   && PKGADD="$SUDO apk add" \
   && PKGDEL="$SUDO apk del" \
-  && PKGCLEAN="$SUDO apk cache clean || true" \
+  && PKGCLEAN="$SUDO apk cache clean 2>&1| grep -v 'ERROR: Package cache is not enabled'" \
   && HOST=x86_64-w64-mingw32 \
   && true
 

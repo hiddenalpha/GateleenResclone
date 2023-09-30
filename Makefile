@@ -114,20 +114,5 @@ dist: clean link
 	mv build/checksums.md5 build/dist-bin/checksums.md5
 	(cd build/dist-bin && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN).tgz *)
 	@echo "\n[\033[34mINFO \033[0m] DONE: Artifacts created and placed in 'dist'."
-	@# Dependency Bundle.
-	$(eval PCKROOT := build/dist-rt)
-	@sh -c 'if test ".exe" = "$(BINEXT)"; then \
-		rm -rf ./$(PCKROOT); \
-		mkdir -p ./$(PCKROOT)/bin; \
-		cp external/$(TOOLCHAIN)/rt/bin/libarchive-13.dll $(PCKROOT)/bin/; \
-		cp external/$(TOOLCHAIN)/rt/bin/libcurl-4.dll $(PCKROOT)/bin/; \
-		cp external/$(TOOLCHAIN)/rt/bin/libiconv-2.dll $(PCKROOT)/bin/; \
-		cp external/$(TOOLCHAIN)/rt/bin/libpcreposix-0.dll $(PCKROOT)/bin/; \
-		cp external/$(TOOLCHAIN)/rt/bin/libpcre-1.dll $(PCKROOT)/bin/; \
-		cp external/$(TOOLCHAIN)/rt/bin/*pthread*.dll $(PCKROOT)/bin/libwinpthread-1.dll; \
-		(cd $(PCKROOT) && find . -type f -exec md5sum -b {} \;) > build/checksums.md5; \
-		mv build/checksums.md5 $(PCKROOT)/checksums.md5; \
-		(cd build/dist-rt && tar --owner=0 --group=0 -czf ../../dist/GateleenResclone-$(PROJECT_VERSION)-$(TOOLCHAIN)-rt.tgz *); \
-	fi'
 	@echo
 	@echo See './dist/' for result.
