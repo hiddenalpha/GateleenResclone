@@ -94,17 +94,17 @@ true \
   && INSTALL_ROOT="/usr/${HOST:-local}" \
   && if test -n "$HOST"; then HOST_="${HOST:?}-" ;fi \
   && CJSON_URL="https://github.com/DaveGamble/cJSON/archive/refs/tags/v${CJSON_VERSION:?}.tar.gz" \
-  && CJSON_SRCTGZ="/var/tmp/cJSON-${CJSON_VERSION:?}.tgz" \
+  && CJSON_SRCTGZ="${CACHE_DIR:?}/cJSON-${CJSON_VERSION:?}.tgz" \
   && CJSON_BINTGZ="${CJSON_SRCTGZ%.*}-bin.tgz" \
   && CURL_VERSION_UGLY="$(echo "$CURL_VERSION"|sed 's;\.;_;g')" \
   && CURL_URL="https://github.com/curl/curl/archive/refs/tags/curl-${CURL_VERSION_UGLY:?}.tar.gz" \
-  && CURL_SRCTGZ="/var/tmp/curl-${CURL_VERSION:?}.tgz" \
+  && CURL_SRCTGZ="${CACHE_DIR:?}/curl-${CURL_VERSION:?}.tgz" \
   && CURL_BINTGZ="${CURL_SRCTGZ%.*}-bin.tgz" \
   && LIBARCHIVE_URL="https://github.com/libarchive/libarchive/releases/download/v${LIBARCHIVE_VERSION:?}/libarchive-${LIBARCHIVE_VERSION:?}.tar.gz" \
   && LIBARCHIVE_SRCTGZ="${CACHE_DIR:?}/libarchive-${LIBARCHIVE_VERSION:?}.tgz" \
   && LIBARCHIVE_BINTGZ="${LIBARCHIVE_SRCTGZ%.*}-bin.tgz" \
   && PCRE_URL="https://sourceforge.net/projects/pcre/files/pcre/${PCRE_VERSION:?}/pcre-${PCRE_VERSION:?}.tar.gz/download" \
-  && PCRE_SRCTGZ="/var/tmp/pcre-${PCRE_VERSION:?}.tgz" \
+  && PCRE_SRCTGZ="${CACHE_DIR:?}/pcre-${PCRE_VERSION:?}.tgz" \
   && PCRE_BINTGZ="${PCRE_SRCTGZ%.*}-bin.tgz" \
   \
   && ${PKGINIT:?} && ${PKGADD:?} $PKGS_TO_ADD \
