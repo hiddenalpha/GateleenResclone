@@ -168,59 +168,59 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
             err = -1; goto fail;
         }else if( !strcmp(arg,"--pull") ){
             if( *mode ){
-                printf("%s\n","ERROR: Mode already specified. Won't set '--pull'.");
+                fprintf(stderr,"%s\n","ERROR: Mode already specified. Won't set '--pull'.");
                 err = -1; goto fail;
             }
             *mode = MODE_FETCH;
         }else if( !strcmp(arg,"--push") ){
             if( *mode ){
-                printf("%s\n","ERROR: Mode already specified. Won't set '--push'.");
+                fprintf(stderr,"%s\n","ERROR: Mode already specified. Won't set '--push'.");
                 err = -1; goto fail;
             }
             *mode = MODE_PUSH;
         }else if( !strcmp(arg,"--url") ){
             if(!( arg=argv[++i]) ){
-                printf("%s\n","ERROR: Arg '--url' needs a value.");
+                fprintf(stderr,"%s\n","ERROR: Arg '--url' needs a value.");
                 err = -1; goto fail;
             }
             *url = arg;
         }else if( !strcmp(arg,"--filter-full") ){
             if(!( arg=argv[++i] )){
-                printf("%s\n","ERROR: Arg '--filter-full' needs a value.");
+                fprintf(stderr,"%s\n","ERROR: Arg '--filter-full' needs a value.");
                 err = -1; goto fail; }
             if( filterRaw ){
-                printf("%s\n","ERROR: Cannot use '--filter-full' because a filter is already set.");
+                fprintf(stderr,"%s\n","ERROR: Cannot use '--filter-full' because a filter is already set.");
                 err=-1; goto fail; }
             filterRaw = arg;
             *isFilterFull = !0;
         }else if( !strcmp(arg,"--filter-part") ){
             if(!( arg=argv[++i] )){
-                printf("%s\n","ERROR: Arg '--filter-part' needs a value.");
+                fprintf(stderr,"%s\n","ERROR: Arg '--filter-part' needs a value.");
                 err = -1; goto fail; }
             if( filterRaw ){
-                printf("%s\n","ERROR: Cannot use '--filter-part' because a filter is already set.");
+                fprintf(stderr,"%s\n","ERROR: Cannot use '--filter-part' because a filter is already set.");
                 err = -1; goto fail; }
             filterRaw = arg;
             *isFilterFull = 0;
         }else if( !strcmp(arg,"--file") ){
             if(!( arg=argv[++i]) ){
-                printf("%s\n","ERROR: Arg '--file' needs a value.");
+                fprintf(stderr,"%s\n","ERROR: Arg '--file' needs a value.");
                 err = -1; goto fail;
             }
             *file = arg;
         }else{
-            printf("%s%s\n", "ERROR: Unknown arg ",arg);
+            fprintf(stderr,"%s%s\n", "ERROR: Unknown arg ",arg);
             err = -1; goto fail;
         }
     }
 
     if( *mode == 0 ){
-        printf("ERROR: One of --push or --pull required.\n");
+        fprintf(stderr,"ERROR: One of --push or --pull required.\n");
         err = -1; goto fail;
     }
 
     if( *url==NULL ){
-        printf("ERROR: Arg --url missing.\n");
+        fprintf(stderr,"ERROR: Arg --url missing.\n");
         err = -1; goto fail;
     }
     uint_t urlFromArgs_len = strlen(*url);
@@ -300,8 +300,8 @@ fail:
 
 static size_t onCurlDirRsp( char*buf, size_t size, size_t nmemb, void*ResourceDir_ ){
     int err;
-    fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
-        ", size=", size, ", nmemb=", nmemb, ", cls=", ResourceDir_, " )");
+    //fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
+    //    ", size=", size, ", nmemb=", nmemb, ", cls=", ResourceDir_, " )");
     ResourceDir *resourceDir = ResourceDir_;
     ClsDload *dload = resourceDir->dload;
     CURL *curl = dload->curl;
@@ -465,7 +465,8 @@ static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, 
             //fprintf(stderr, "%s\n", "[DEBUG] Segment rejected by filter.");
             err = 0; /* fall to restoreEndSlash */
         }else{
-            fprintf(stderr, "%s%.*s%s"FMT_SIZE_T"\n", "[ERROR] regexec(rgx, '", (int)name_len, name, "') -> ", err);
+            fprintf(stderr, "%s%.*s%s"FMT_SIZE_T"\n", "[ERROR] regexec(rgx, '", (int)name_len, name,
+                "') -> ", err);
             err = -1; /* fall to restoreEndSlash */
         }
         if( restoreEndSlash ){
