@@ -56,8 +56,11 @@ SUM:              14    205      114  1221
   make
   make install
 
-Those who prefer less fragile build environments may consult
-"contrib/build-env-setup/README.txt".
+Just in case you've no build machine at hand. I've uploaded my qemu
+build machines alongside the released artifacts. Just look out for
+"qcow2" files at the github releases page:
+
+  https://github.com/hiddenalpha/GateleenResclone/releases
 
 
 
