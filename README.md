@@ -37,7 +37,7 @@ Commandline utility to clone subtrees from gateleen instances.
 ## Stats For Nerds
 
 ```
-github.com/AlDanial/cloc v 1.96  T=0.01 s (1133.6 files/s, 115203.6 lines/s)
+github.com/AlDanial/cloc
 -------------------------------------------------
 Language        files    blank    comment    code
 -------------------------------------------------

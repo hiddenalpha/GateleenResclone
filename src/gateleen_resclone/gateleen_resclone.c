@@ -168,59 +168,59 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
             err = -1; goto fail;
         }else if( !strcmp(arg,"--pull") ){
             if( *mode ){
-                fprintf(stderr,"%s\n","ERROR: Mode already specified. Won't set '--pull'.");
+                fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--pull'.");
                 err = -1; goto fail;
             }
             *mode = MODE_FETCH;
         }else if( !strcmp(arg,"--push") ){
             if( *mode ){
-                fprintf(stderr,"%s\n","ERROR: Mode already specified. Won't set '--push'.");
+                fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--push'.");
                 err = -1; goto fail;
             }
             *mode = MODE_PUSH;
         }else if( !strcmp(arg,"--url") ){
             if(!( arg=argv[++i]) ){
-                fprintf(stderr,"%s\n","ERROR: Arg '--url' needs a value.");
+                fprintf(stderr,"%s\n","EINVAL: Arg '--url' needs a value.");
                 err = -1; goto fail;
             }
             *url = arg;
         }else if( !strcmp(arg,"--filter-full") ){
             if(!( arg=argv[++i] )){
-                fprintf(stderr,"%s\n","ERROR: Arg '--filter-full' needs a value.");
+                fprintf(stderr,"%s\n","EINVAL: Arg '--filter-full' needs a value.");
                 err = -1; goto fail; }
             if( filterRaw ){
-                fprintf(stderr,"%s\n","ERROR: Cannot use '--filter-full' because a filter is already set.");
+                fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-full' because a filter is already set.");
                 err=-1; goto fail; }
             filterRaw = arg;
             *isFilterFull = !0;
         }else if( !strcmp(arg,"--filter-part") ){
             if(!( arg=argv[++i] )){
-                fprintf(stderr,"%s\n","ERROR: Arg '--filter-part' needs a value.");
+                fprintf(stderr,"%s\n","EINVAL: Arg '--filter-part' needs a value.");
                 err = -1; goto fail; }
             if( filterRaw ){
-                fprintf(stderr,"%s\n","ERROR: Cannot use '--filter-part' because a filter is already set.");
+                fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-part' because a filter is already set.");
                 err = -1; goto fail; }
             filterRaw = arg;
             *isFilterFull = 0;
         }else if( !strcmp(arg,"--file") ){
             if(!( arg=argv[++i]) ){
-                fprintf(stderr,"%s\n","ERROR: Arg '--file' needs a value.");
+                fprintf(stderr,"%s\n","EINVAL: Arg '--file' needs a value.");
                 err = -1; goto fail;
             }
             *file = arg;
         }else{
-            fprintf(stderr,"%s%s\n", "ERROR: Unknown arg ",arg);
+            fprintf(stderr,"%s%s\n", "EINVAL: Unknown arg ",arg);
             err = -1; goto fail;
         }
     }
 
     if( *mode == 0 ){
-        fprintf(stderr,"ERROR: One of --push or --pull required.\n");
+        fprintf(stderr,"EINVAL: One of --push or --pull required.\n");
         err = -1; goto fail;
     }
 
     if( *url==NULL ){
-        fprintf(stderr,"ERROR: Arg --url missing.\n");
+        fprintf(stderr,"EINVAL: Arg --url missing.\n");
         err = -1; goto fail;
     }
     uint_t urlFromArgs_len = strlen(*url);
@@ -258,14 +258,14 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
                 //fprintf(stderr, "%s%u%s%p\n",
                 //    "[DEBUG] realloc(NULL, ", filter_cap*sizeof**filter," ) -> ", tmp);
                 if( tmp == NULL ){
-                    fprintf(stderr, "%s"FMT_SIZE_T"%s\n", "[ERROR] realloc(", filter_cap*sizeof**filter, ")");
+                    fprintf(stderr, "realloc("FMT_SIZE_T"): %s\n", filter_cap*sizeof**filter, strerror(errno));
                     err = -ENOMEM; goto fail; }
                 *filter = tmp;
             }
             //fprintf(stderr, "%s%d%s%s%s\n", "[DEBUG] filter[", iSegm, "] -> '", beg-1, "'");
             err = regcomp((*filter)+iSegm, beg-1, REG_EXTENDED);
             if( err ){
-                fprintf(stderr, "%s%s%s"FMT_SIZE_T"\n", "[ERROR] regcomp(", beg, ") -> ", err);
+                fprintf(stderr, "regcomp(%s): "FMT_SIZE_T"\n", beg, err);
                 err = -1; goto fail; }
             /* Restore surrounding stuff. */
             beg[-1] = origBeg;
@@ -282,7 +282,7 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
     }
 
     if( *mode == MODE_PUSH && *filter ){
-        fprintf(stderr, "%s\n", "[ERROR] Filtering not supported for push mode.");
+        fprintf(stderr, "%s\n", "EINVAL: Filtering not supported for push mode.");
         err = -1; goto fail;
     }
 

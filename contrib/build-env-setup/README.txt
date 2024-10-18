@@ -221,9 +221,10 @@ true \
         > Makefile \
      && rm "${tmpfile:?}" \
      ;fi \
-  && make clean $HORSCHT && make -e -j$(nproc) $HORSCHT \
+  && make -j8 clean $HORSCHT \
+  && make -j8 -j$(nproc) $HORSCHT \
   && dirOfDistBundle="$(realpath dist)" \
-  && printf '\n  SUCCESS  :)  Distribution bundle is ready in:\n\n  %s\n\n  Tip: Before pulling out your hair about how to get that archive out of\n       your qemu VM. STOP kluding around with silly tools and learn how\n       basic tools do the job perfectly fine. So go to your host and run:\n\n  ssh %s@localhost -p2222 -- sh -c '\''true && cd "%s" && tar c *'\'' | tar x\n\n' "${dirOfDistBundle:?}" "$USER" "${dirOfDistBundle:?}" \
+  && printf '\n  SUCCESS  :)  Distribution bundle is ready in:\n\n  %s\n\n  Tip: Before pulling out your hair about how to get that archive out of\n       your qemu VM. STOP kluding around with silly tools and learn how\n       basic tools do the job perfectly fine. So go to your host and run:\n\n  ssh %s@localhost -p22 -T '\''true && cd "%s" && tar c *'\'' | tar x\n\n' "${dirOfDistBundle:?}" "$USER" "${dirOfDistBundle:?}" \
   && true
 
 
