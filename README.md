@@ -75,4 +75,17 @@ build machines alongside the released artifacts. Just look out for
 - pcre
 
 
+## Dockerimage?
+
+Usually there's no need to have a dockerimage.
+But anyway, here your Dockerfile of desire:
+
+```Dockerfile
+FROM docker.io/alpine:3.21.2
+RUN true \
+  && apk add gcompat \
+  && wget -O- 'https://github.com/hiddenalpha/GateleenResclone/releases/download/v0.0.5/GateleenResclone-0.0.5+x86_64-linux-gnu.tgz' \
+     | tar -C /usr -xz -- bin \
+  && true
+```
 
