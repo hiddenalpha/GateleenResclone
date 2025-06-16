@@ -39,10 +39,15 @@ int initEnv( Resclone*resclone ){
         .mallocator = resclone->mallocator,
         .ioWorker = resclone->ioWorker,
     });
-    assert(resclone->socketMgrTls);
-    assert(resclone->ioWorker);
-    assert(resclone->networker);
-    return 0;
+	/**/
+	assert(resclone->socketMgrTls);
+	assert(resclone->ioWorker);
+	assert(resclone->networker);
+	/**/
+	(*resclone->ioMultiplexer)->start(resclone->ioMultiplexer);
+	(*resclone->ioWorker)->start(resclone->ioWorker);
+	/**/
+	return 0;
 }
 
 
