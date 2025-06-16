@@ -14,7 +14,7 @@ endif
 
 CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term $(WINSHITINCLUDE)
 
-LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -larchive -lcurl -lcJSON $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
+LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -lgarbage -lcJSON $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
 
 ARCH=$(shell $(CC) -v 2>&1 | egrep '^Target: ' | sed -E 's,^Target: +(.*)$$,\1,')
 
@@ -35,6 +35,7 @@ compile:
 compile: build/obj/array/array.o
 compile: build/obj/common/commonbase.o
 compile: build/obj/entrypoint/gateleenResclone.o
+compile: build/obj/garb_glue/garb_glue.o
 compile: build/obj/gateleen_resclone/gateleen_resclone.o
 compile: build/obj/mime/mime.o
 compile: build/obj/util_term/util_term.o
@@ -54,6 +55,7 @@ build/bin/gateleen-resclone$(BINEXT): build/lib/libGateleenResclone$(LIBSEXT)
 
 build/lib/libGateleenResclone$(LIBSEXT):
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/array/array.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/garb_glue/garb_glue.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/gateleen_resclone/gateleen_resclone.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/mime/mime.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/util_term/util_term.o

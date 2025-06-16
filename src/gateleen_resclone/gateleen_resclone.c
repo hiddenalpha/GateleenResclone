@@ -8,13 +8,12 @@
 #include <errno.h>
 #include <libgen.h>
 #include <regex.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 /* Libs */
-#include "archive.h"
-#include "archive_entry.h"
-#include <curl/curl.h>
-#include <cJSON.h>
+#include <Garbage.h>
 
 /* Project */
 #include "array.h"
@@ -31,37 +30,16 @@
 
 
 
-/** Operation mode. */
-typedef enum OpMode {
-    MODE_NULL =0,
-    MODE_FETCH=1,
-    MODE_PUSH =2
-} OpMode;
-
-
-/** Main module handle representing an instance. */
-typedef struct Resclone {
-    enum OpMode mode;
-    /** Base URL where to upload to / download from. */
-    char *url;
-    /** Array of regex patterns to use per segment. */
-    regex_t *filter;
-    size_t filter_len;
-    /** Says if only start or whole path needs to match the pattern. */
-    int isFilterFull;
-    /* Path to archive file to use. Using stdin/stdout if NULL. */
-    char *file;
-} Resclone;
-
-
 /** Closure for a download instructed by external caller. */
+#define ClsDload_mAGIC 0x63036F77
 typedef struct ClsDload {
+    unsigned mAGIC;
     struct Resclone *resclone;
     char *rootUrl;
+    struct Garbage_HttpClientReq **req; /*TODO unref*/
     struct archive *dstArchive;
     struct archive_entry *tmpEntry;
     char *archiveFile;
-    CURL *curl;
 } ClsDload;
 
 
@@ -95,7 +73,7 @@ typedef struct Upload {
     char *rootUrl;
     char *archiveFile;
     struct archive *srcArchive;
-    CURL *curl;
+    // OBSOLETE CURL *curl;
 } Upload;
 
 
@@ -112,6 +90,27 @@ typedef struct Put {
 
 
 TPL_ARRAY(str, char*, 16);
+
+
+static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l ){
+#if !NDEBUG
+    if( !p ){ LOGF("assert(p != NULL) @ %s:%d\n", f, l); abort(); }
+    Resclone const*const q = p;
+    if( q->mAGIC != Resclone_mAGIC ){ LOGF("assert(mAGIC == Resclone_mAGIC) @ %s:%d\n", f, l); }
+#endif
+    return p;
+}
+#define assert_is_Resclone(p) assert_is_Resclone(p, __FILE__, __LINE__)
+
+static inline struct ClsDload* assert_is_ClsDload( void*p, char const*f, int l ){
+#if !NDEBUG
+    if( !p ){ LOGF("assert(p != NULL) @ %s:%d\n", f, l); abort(); }
+    ClsDload const*const q = p;
+    if( q->mAGIC == ClsDload_mAGIC ){ LOGF("assert(mAGIC == ClsDload_mAGIC) @ %s:%d\n", f, l); abort(); }
+#endif
+    return p;
+}
+#define assert_is_ClsDload(p) assert_is_ClsDload(p, __FILE__, __LINE__)
 
 
 static void printHelp( void ){
@@ -303,12 +302,12 @@ static size_t onCurlDirRsp( char*buf, size_t size, size_t nmemb, void*ResourceDi
     //fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
     //    ", size=", size, ", nmemb=", nmemb, ", cls=", ResourceDir_, " )");
     ResourceDir *resourceDir = ResourceDir_;
-    ClsDload *dload = resourceDir->dload;
-    CURL *curl = dload->curl;
+    //ClsDload *dload = resourceDir->dload;
+    // OBSOLETE CURL *curl = dload->curl;
     const size_t buf_len = size * nmemb;
 
     long rspCode;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &rspCode);
+    // OBSOLETE curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &rspCode);
     resourceDir->rspCode = rspCode;
     if( rspCode != 200 ){
         return size * nmemb; }
@@ -356,26 +355,28 @@ static size_t onResourceChunk( char*buf, size_t size, size_t nmemb, void*Resourc
 
 
 static ssize_t collectResourceIntoMemory( ResourceFile*resourceFile, char*url ){
-    ssize_t err;
-    ClsDload *dload = resourceFile->dload;
-    CURL *curl = dload->curl;
+    int err;
+    //ClsDload *dload = resourceFile->dload;
+    // OBSOLETE CURL *curl = dload->curl;
 
-    err =  CURLE_OK!= curl_easy_setopt(curl, CURLOPT_URL, url)
-        || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L )
-        || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, onResourceChunk)
-        || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEDATA, resourceFile)
-        ;
-    if( err ){ assert(!err); err = -1; goto endFn; }
+    assert(!"TODO_Sn8AAP5mAAC3DAAA");
+    //err =  CURLE_OK!= curl_easy_setopt(curl, CURLOPT_URL, url)
+    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L )
+    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, onResourceChunk)
+    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEDATA, resourceFile)
+    //    ;
+    //if( err ){ assert(!err); err = -1; goto endFn; }
 
-    err = curl_easy_perform(curl);
-    if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s%s%s"FMT_SIZE_T"%s%s\n", "[ERROR] ", __func__, "(): '",
-            url, "' (code ", err, "): ", curl_easy_strerror(err));
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_Vn4AAGJBAAC3aAAA");
+    // err = curl_easy_perform(curl);
+    //if( err != CURLE_OK ){
+    //    fprintf(stderr, "%s%s%s%s%s"FMT_SIZE_T"%s%s\n", "[ERROR] ", __func__, "(): '",
+    //        url, "' (code ", err, "): ", curl_easy_strerror(err));
+    //    err = -1; goto endFn;
+    //}
 
     err = 0;
-endFn:
+//endFn:
     return err;
 }
 
@@ -383,47 +384,50 @@ endFn:
 static ssize_t copyBufToArchive( ResourceFile*resourceFile ){
     ssize_t err;
     ClsDload *dload = resourceFile->dload;
-    char *fileName = resourceFile->url + strlen(resourceFile->dload->rootUrl);
+    //char *fileName = resourceFile->url + strlen(resourceFile->dload->rootUrl);
 
     if( ! dload->dstArchive ){
         /* Setup archive if not setup yet. */
-        dload->dstArchive = archive_write_new();
-        err =  archive_write_set_format_pax_restricted(dload->dstArchive)
-            || archive_write_open_filename(dload->dstArchive, dload->archiveFile)
-            ;
-        if( err ){
-            fprintf(stderr, "%s%s\n", "[ERROR] Failed to setup tar output: ",
-                archive_error_string(dload->dstArchive));
-            err = -1; goto endFn;
-        }
+        assert(!"TODO_PSsAACgdAAALDwAA");
+        //dload->dstArchive = archive_write_new();
+        //err =  archive_write_set_format_pax_restricted(dload->dstArchive)
+        //    || archive_write_open_filename(dload->dstArchive, dload->archiveFile)
+        //    ;
+        //if( err ){
+        //    fprintf(stderr, "%s%s\n", "[ERROR] Failed to setup tar output: ",
+        //        archive_error_string(dload->dstArchive));
+        //    err = -1; goto endFn;
+        //}
     }
 
     if( dload->tmpEntry == NULL ){
-        dload->tmpEntry = archive_entry_new();
+        assert(!"TODO_al4AAJIqAABYMgAA"); //dload->tmpEntry = archive_entry_new();
     }else{
-        dload->tmpEntry = archive_entry_clear(dload->tmpEntry);
+        assert(!"TODO_il0AADpaAAArYAAA"); //dload->tmpEntry = archive_entry_clear(dload->tmpEntry);
     }
-    archive_entry_set_pathname(dload->tmpEntry, fileName);
-    archive_entry_set_filetype(dload->tmpEntry, AE_IFREG);
-    archive_entry_set_size(dload->tmpEntry, resourceFile->buf_len);
-    archive_entry_set_perm(dload->tmpEntry, 0644);
-    err = archive_write_header(dload->dstArchive, dload->tmpEntry);
-    if( err ){ err = -1; goto endFn; }
+    assert(!"TODO_ZloAADNWAAA2ZAAA");
+    //archive_entry_set_pathname(dload->tmpEntry, fileName);
+    //archive_entry_set_filetype(dload->tmpEntry, AE_IFREG);
+    //archive_entry_set_size(dload->tmpEntry, resourceFile->buf_len);
+    //archive_entry_set_perm(dload->tmpEntry, 0644);
+    //err = archive_write_header(dload->dstArchive, dload->tmpEntry);
+    //if( err ){ err = -1; goto endFn; }
 
-    ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
-    if( written < 0 ){
-        fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
-            archive_error_string(dload->dstArchive));
-        err = -1; goto endFn;
-    }else if( written != resourceFile->buf_len ){
-        fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
-            resourceFile->buf_len, " bytes. Instead it wrote ", written);
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_gBQAACAYAACnewAA");
+    //ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
+    //if( written < 0 ){
+    //    fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
+    //        archive_error_string(dload->dstArchive));
+    //    err = -1; goto endFn;
+    //}else if( written != resourceFile->buf_len ){
+    //    fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
+    //        resourceFile->buf_len, " bytes. Instead it wrote ", written);
+    //    err = -1; goto endFn;
+    //}
     resourceFile->buf_len = 0;
 
     err = 0;
-endFn:
+//endFn:
     return err;
 }
 
@@ -482,13 +486,55 @@ endFn:
 }
 
 
+static void onDloadPushIoTask( void(*task)(void*arg), void*arg, void*cls_ ){
+    Resclone*const resclone = assert_is_Resclone(cls_);
+    FN_ThreadPool_enque(resclone->ioWorker, task, arg);
+}
+
+
+static void onDloadError( int retval, void*cls_ ){
+    ClsDload*const dload = assert_is_ClsDload(cls_);
+    LOGW("%s: onDloadError(%d)\n", strerrname(-retval), retval);
+    assert(*dload->req);
+    LOGT("[TRACE] LINE %d in %s\n", __LINE__, __FILE__);
+    assert((*dload->req)->pause);
+    LOGT("[TRACE] LINE %d in %s\n", __LINE__, __FILE__);
+    (*dload->req)->pause(dload->req);
+}
+
+
+static void onDloadRspHdr(
+    const char*proto, int proto_len,
+    int rspCode,
+    const char*phrase, int phrase_len,
+    const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
+    struct Garbage_HttpClientReq**req,
+    void*cls
+){
+    //Resclone*const resclone = assert_is_Resclone(cls_);
+    assert(!"TODO_T00AAHpvAAA7KQAA");
+}
+
+
+static void onDloadRspBody( const char*buf, int buf_len, struct Garbage_HttpClientReq**, void*cls ){
+    //Resclone*const resclone = assert_is_Resclone(cls_);
+    assert(!"TODO_hxUAAP44AACoGwAA");
+}
+
+
+static void onDloadRspDone( struct Garbage_HttpClientReq**, void*cls ){
+    //Resclone*const resclone = assert_is_Resclone(cls_);
+    assert(!"TODO_4kYAAJI2AACYVQAA");
+}
+
+
 /** Gets called for every resource to scan/download.
  * HINT: Gets called recursively. */
 static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentResourceDir , char*entryName ){
-    ssize_t err;
+    int err;
     char *url = NULL;
     int url_len = 0;
-    cJSON *jsonRoot = NULL;
+    // OBSOLETE cJSON *jsonRoot = NULL;
     int resUrl_len = 0;
     ResourceDir *resourceDir = NULL;
     ResourceFile *resourceFile = NULL;
@@ -511,7 +557,7 @@ static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentRes
             int len = strlen(d->name) - strspn(d->name, "/");
             url_len += len;
         }
-        url = malloc(url_len +1 /*MayPreventReallocLaterForName*/+24);
+        url = Mallocator_realloc(dload->resclone->mallocator, NULL, 0, url_len +1 /*MayPreventReallocLaterForName*/+24);
         char *u = url + url_len;
         for( ResourceDir*d=resourceDir ; d ; d=d->parentDir ){
             char *name = d->name + strspn(d->name, "/");
@@ -519,22 +565,24 @@ static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentRes
             memcpy(u-name_len, name, name_len); u -= name_len;
         }
         url[url_len] = '\0';
-        //fprintf(stderr, "%s%s%s\n", "[DEBUG] URL '", url, "'");
-        err =  CURLE_OK != curl_easy_setopt(dload->curl, CURLOPT_URL, url)
-            || CURLE_OK != curl_easy_setopt(dload->curl, CURLOPT_FOLLOWLOCATION, 0L)
-            || CURLE_OK != curl_easy_setopt(dload->curl, CURLOPT_WRITEFUNCTION, onCurlDirRsp)
-            || CURLE_OK != curl_easy_setopt(dload->curl, CURLOPT_WRITEDATA, resourceDir)
-            ;
-        if( err ){
-            assert(!err); err = -1; goto endFn; }
+        LOGD("[DEBUG] URL '%s'\n", url);
     }
 
-    err = curl_easy_perform(dload->curl);
-    if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
-            "[ERROR] '", url, "' (code ", err, "): ", curl_easy_strerror(err));
-        err = -1; goto endFn;
-    }
+    static struct Garbage_HttpClientReq_Mentor requestMentor = {
+        .pushIoTask = onDloadPushIoTask,
+        .onError = onDloadError,
+        .onRspHdr = onDloadRspHdr,
+        .onRspBody = onDloadRspBody,
+        .onRspDone = onDloadRspDone,
+    };
+    char const *host = "127.0.0.1"; LOGW("[WARN ] TODO_6QsAAK50AADZwAAh host hardcoded here\n");
+    uint_least16_t port = 7013; LOGW("[WARN ] TODO_CBkAAEUIAADVcgAA port hardcoded here\n");
+    dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, url, NULL, 0, &requestMentor, dload);
+    FN_HttpClientReq_closeSnk(dload->req);
+    FN_HttpClientReq_resume(dload->req);
+
+    LOGW("[WARN ] TODO_v28AAJNIAADkCQAA fix dead-code here.\n");
+    return -ENOTSUP;
 
     if( resourceDir->rspCode == ERR_PARSE_DIR_LIST ){
         err = 0; goto endFn; /* Already logged by sub-ctxt. Simply skip to next entry. */
@@ -548,39 +596,43 @@ static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentRes
     }
 
     // Parse the collected response body.
-    jsonRoot = cJSON_Parse(resourceDir->rspBody);
-    if( ! cJSON_IsObject(jsonRoot) ){ // TODO: Handle case
-        fprintf(stderr, "%s\n", "[ERROR] JSON root expected to be object but is not.");
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_WwAAANA1AAAHIAAA");
+    //jsonRoot = cJSON_Parse(resourceDir->rspBody);
+    //if( ! cJSON_IsObject(jsonRoot) ){ // TODO: Handle case
+    //    fprintf(stderr, "%s\n", "[ERROR] JSON root expected to be object but is not.");
+    //    err = -1; goto endFn;
+    //}
 
     /* Do some validations to get to the payload we're interested in. */
-    if( cJSON_GetArraySize(jsonRoot) != 1 ){
-        fprintf(stderr, "%s%d\n", "[ERROR] JSON root expected ONE child but got ",
-            cJSON_GetArraySize(jsonRoot));
-        err = -1; goto endFn;
-    }
-    cJSON *data = jsonRoot->child;
+    assert(!"TODO_EV8AAP4xAACaGQAA");
+    //if( cJSON_GetArraySize(jsonRoot) != 1 ){
+    //    fprintf(stderr, "%s%d\n", "[ERROR] JSON root expected ONE child but got ",
+    //        cJSON_GetArraySize(jsonRoot));
+    //    err = -1; goto endFn;
+    //}
+    //cJSON *data = jsonRoot->child;
     //fprintf(stderr, "%s%s%s\n", "[DEBUG] Processing json['", data->string, "']");
-    if( ! cJSON_IsArray(data) ){
-        fprintf(stderr, "%s%s%s\n", "[ERROR] json['", data->string,
-            "'] expected to be an array. But is not.");
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_YS4AAFZaAABJMgAA");
+    //if( ! cJSON_IsArray(data) ){
+    //    fprintf(stderr, "%s%s%s\n", "[ERROR] json['", data->string,
+    //        "'] expected to be an array. But is not.");
+    //    err = -1; goto endFn;
+    //}
 
     // Iterate all the entries we have to process.
     ResourceFile _2 = {0}; resourceFile =&_2;
     resourceFile->dload = dload;
     uint_t iDirEntry = 0;
-    for( cJSON *arrEntry=data->child ; arrEntry!=NULL ; arrEntry=arrEntry->next ){
-        if( ! cJSON_IsString(arrEntry) ){
-            fprintf(stderr, "%s%s%s%u%s\n", "[ERROR] ", data->string, "['", iDirEntry,
-                "'] expected to be a string. But is not." );
-            err = -1; goto endFn;
-        }
-        //fprintf(stderr, "%s%s%s%u%s%s\n", "[DEBUG] ", data->string, "[", iDirEntry, "] -> ", arrEntry->valuestring);
-        char *name = arrEntry->valuestring;
-        int name_len = strlen(name);
+    assert(!"TODO_sB0AACoAAAGaAAA86"); // for( cJSON *arrEntry=data->child ; arrEntry!=NULL ; arrEntry=arrEntry->next ){
+    for(;;){
+        //if( ! cJSON_IsString(arrEntry) ){
+        //    fprintf(stderr, "%s%s%s%u%s\n", "[ERROR] ", data->string, "['", iDirEntry,
+        //        "'] expected to be a string. But is not." );
+        //    err = -1; goto endFn;
+        //}
+        ////fprintf(stderr, "%s%s%s%u%s%s\n", "[DEBUG] ", data->string, "[", iDirEntry, "] -> ", arrEntry->valuestring);
+        char *name =  NULL;// TODO  arrEntry->valuestring;
+        int name_len = 0;//TODO strlen(name);
 
         err = pathFilterAcceptsEntry(dload, resourceDir, name);
         if( err < 0 ){ /* ERROR */
@@ -618,7 +670,7 @@ static ssize_t gateleenResclone_download( ClsDload*dload , ResourceDir*parentRes
 
     err = 0; /* OK */
 endFn:
-    if( jsonRoot != NULL ){ cJSON_Delete(jsonRoot); }
+    // TODO if( jsonRoot != NULL ){ cJSON_Delete(jsonRoot); }
     if( resourceFile ){
         free(resourceFile->buf); resourceFile->buf = NULL;
         free(resourceFile->url); resourceFile->url = NULL;
@@ -632,43 +684,19 @@ endFn:
 }
 
 
-static void Resclone_free( Resclone*resclone ){
-    if( resclone == NULL ) return;
-    // TODO need free? -> char *url;
-    // TODO need free? -> regex_t *filter;
-    // TODO need free? -> char *file;
-    free(resclone);
-}
-
-
-static Resclone* Resclone_alloc(){
-    ssize_t err;
-    Resclone *resclone = NULL;
-
-    err = curl_global_init(CURL_GLOBAL_ALL);
-    if( err ){
-        assert(!err); goto fail; }
-
-    resclone = calloc(1, sizeof*resclone);
-
-    return resclone;
-    fail:
-    Resclone_free(resclone);
-    return NULL;
-}
-
-
 static size_t onUploadChunkRequested( char*buf, size_t size, size_t count, void*Put_ ){
     int err;
-    Put *put = Put_;
-    Upload *upload = put->upload;
-    const size_t buf_len = size * count;
+    //Put *put = Put_;
+    //Upload *upload = put->upload;
+    //const size_t buf_len = size * count;
 
-    ssize_t readLen = archive_read_data(upload->srcArchive, buf, buf_len);
+    assert(!"TODO_KCcAACViAABlNQAA");
+    ssize_t readLen;
+    //readLen = archive_read_data(upload->srcArchive, buf, buf_len);
     //fprintf(stderr, "%s%lu%s\n", "[DEBUG] Cpy ", readLen, " bytes.");
     if( readLen < 0 ){
-        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to read from archive (code ",
-            readLen, "): ", archive_error_string(upload->srcArchive));
+        //fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to read from archive (code ",
+        //    readLen, "): ", archive_error_string(upload->srcArchive));
         err = -1; goto endFn;
     }else if( readLen > 0 ){
         // Regular read. Data already written to 'buf'. Only need to adjust
@@ -682,14 +710,14 @@ static size_t onUploadChunkRequested( char*buf, size_t size, size_t count, void*
     assert(!"Unreachable code");
 endFn:
     //fprintf(stderr, "%s%s%s%ld\n", "[DEBUG] ", __func__, "() -> ", err);
-    return err >= 0 ? err : CURL_READFUNC_ABORT;
+    return err >= 0 ? err : /*CURL_READFUNC_ABORT TODO*/-42;
 }
 
 
-static ssize_t addContentTypeHeader( Put*put, struct curl_slist *reqHdrs ){
+static ssize_t addContentTypeHeader( Put*put/*TODO, struct curl_slist *reqHdrs */ ){
     ssize_t err;
     char *contentTypeHdr = NULL;
-    Upload *upload = put->upload;
+    //Upload *upload = put->upload;
     const char *name = put->name;
 
     uint_t name_len = strlen(put->name);
@@ -719,8 +747,9 @@ static ssize_t addContentTypeHeader( Put*put, struct curl_slist *reqHdrs ){
     contentTypeHdr = malloc( contentTypePrefix_len + mimeType_len +1 );
     memcpy(contentTypeHdr , contentTypePrefix , contentTypePrefix_len);
     memcpy(contentTypeHdr+contentTypePrefix_len , mimeType , mimeType_len+1);
-    reqHdrs = curl_slist_append(reqHdrs, contentTypeHdr);
-    err = curl_easy_setopt(upload->curl, CURLOPT_HTTPHEADER, reqHdrs);
+    assert(!"TODO_6UcAAGEwAACHKAAA");
+    //reqHdrs = curl_slist_append(reqHdrs, contentTypeHdr);
+    //err = curl_easy_setopt(upload->curl, CURLOPT_HTTPHEADER, reqHdrs);
     if( err ){
         fprintf(stderr, "%s"FMT_SIZE_T"\n", "[ERROR] curl_easy_setopt(_, HTTPHEADER, _): ", err);
         assert(!err); err = -1; goto endFn; }
@@ -736,7 +765,7 @@ static ssize_t httpPutEntry( Put*put ){
     ssize_t err;
     Upload *upload = put->upload;
     char *url = NULL;
-    struct curl_slist *reqHdrs = NULL;
+    // TODO struct curl_slist *reqHdrs = NULL;
 
     int rootUrl_len = strlen(upload->rootUrl);
     if( upload->rootUrl[rootUrl_len-1]=='/' ){
@@ -747,21 +776,23 @@ static ssize_t httpPutEntry( Put*put ){
     if( url == NULL ){
         err = -ENOMEM; goto endFn; }
     sprintf(url, "%.*s/%s", rootUrl_len,upload->rootUrl, put->name);
-    err =  CURLE_OK != curl_easy_setopt(upload->curl, CURLOPT_URL, url)
-        || addContentTypeHeader(put, reqHdrs)
-        ;
+    assert(!"TODO_chIAAHobAABdMwAA");
+    //err =  CURLE_OK != curl_easy_setopt(upload->curl, CURLOPT_URL, url)
+    //    || addContentTypeHeader(put, reqHdrs)
+    //    ;
     if( err ){
         assert(!err); err = -1; goto endFn; }
 
     fprintf(stderr, "%s%s%s\n", "[INFO ] Upload '", url, "'");
-    err = curl_easy_perform(upload->curl);
-    if( err != CURLE_OK ){
-        fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
-            "[ERROR] PUT '", url, "' (code ", err, "): ", curl_easy_strerror(err));
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_ZWQAABNAACIZAAAR");
+    //err = curl_easy_perform(upload->curl);
+    //if( err != CURLE_OK ){
+    //    fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
+    //        "[ERROR] PUT '", url, "' (code ", err, "): ", curl_easy_strerror(err));
+    //    err = -1; goto endFn;
+    //}
     long rspCode;
-    curl_easy_getinfo(upload->curl, CURLINFO_RESPONSE_CODE, &rspCode);
+    //curl_easy_getinfo(upload->curl, CURLINFO_RESPONSE_CODE, &rspCode);
     if( rspCode <= 199 || rspCode >= 300 ){
         fprintf(stderr, "%s%ld%s%s%s\n",
             "[WARN ] Got RspCode ", rspCode, " for 'PUT ", url, "'");
@@ -771,7 +802,7 @@ static ssize_t httpPutEntry( Put*put ){
 
     err = 0;
 endFn:
-    curl_slist_free_all(reqHdrs);
+    // TODO curl_slist_free_all(reqHdrs);
     free(url);
     return err;
 }
@@ -779,48 +810,50 @@ endFn:
 
 static ssize_t readArchive( Upload*upload ){
     ssize_t err;
-    Put *put = NULL;
+    //Put *put = NULL;
 
-    upload->srcArchive = archive_read_new();
+    //upload->srcArchive = archive_read_new();
     if( ! upload->srcArchive ){
         assert(upload->srcArchive); err = -1; goto endFn; }
 
-    const int blockSize = (1<<14);
-    err = archive_read_support_format_all(upload->srcArchive)
-       || archive_read_open_filename(upload->srcArchive, upload->archiveFile, blockSize)
-       ;
+    //const int blockSize = (1<<14);
+    assert(!"TODO_1G0AAIdeAADxFQAA");
+    //err = archive_read_support_format_all(upload->srcArchive)
+    //   || archive_read_open_filename(upload->srcArchive, upload->archiveFile, blockSize)
+    //   ;
     if( err ){
-        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to open src archive (code ", err, "): ",
-            curl_easy_strerror(err));
+        //fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to open src archive (code ", err, "): ",
+        //    curl_easy_strerror(err));
         err = -1; goto endFn;
     }
 
-    err = curl_easy_setopt(upload->curl, CURLOPT_UPLOAD, 1L)
-       || curl_easy_setopt(upload->curl, CURLOPT_READFUNCTION, onUploadChunkRequested)
-        ;
+    //err = curl_easy_setopt(upload->curl, CURLOPT_UPLOAD, 1L)
+    //   || curl_easy_setopt(upload->curl, CURLOPT_READFUNCTION, onUploadChunkRequested)
+    //    ;
     if( err ){
         assert(!err); err = -1; goto endFn; }
-    for( struct archive_entry*entry ; archive_read_next_header(upload->srcArchive,&entry) == ARCHIVE_OK ;){
-        const char *name = archive_entry_pathname(entry);
-        int ftype = archive_entry_filetype(entry);
-        if( ftype == AE_IFDIR ){
-            continue; // Ignore dirs because gateleen doesn't know 'dirs' as such.
-        }
-        if( ftype != AE_IFREG ){
-            fprintf(stderr, "%s%s%s\n", "[WARN ] Ignore non-regular file '", name, "'");
-            continue;
-        }
-        //fprintf(stderr, "%s%s%s\n", "[DEBUG] Reading '",name,"'");
-        Put _1 = {
-            .upload = upload,
-            .name = (char*)name
-        }; put = &_1;
-        err = curl_easy_setopt(upload->curl, CURLOPT_READDATA, put)
-            || httpPutEntry(put);
-        //curl = upload->curl; // Sync back. TODO: Still needed?
-        if( err ){
-            assert(!err); err = -1; goto endFn; }
-    }
+    assert(!"TODO_DlkAAL4rAACHIAAA");
+    //for( struct archive_entry*entry ; archive_read_next_header(upload->srcArchive,&entry) == ARCHIVE_OK ;){
+    //    const char *name = archive_entry_pathname(entry);
+    //    int ftype = archive_entry_filetype(entry);
+    //    if( ftype == AE_IFDIR ){
+    //        continue; // Ignore dirs because gateleen doesn't know 'dirs' as such.
+    //    }
+    //    if( ftype != AE_IFREG ){
+    //        fprintf(stderr, "%s%s%s\n", "[WARN ] Ignore non-regular file '", name, "'");
+    //        continue;
+    //    }
+    //    //fprintf(stderr, "%s%s%s\n", "[DEBUG] Reading '",name,"'");
+    //    Put _1 = {
+    //        .upload = upload,
+    //        .name = (char*)name
+    //    }; put = &_1;
+    //    err = curl_easy_setopt(upload->curl, CURLOPT_READDATA, put)
+    //        || httpPutEntry(put);
+    //    //curl = upload->curl; // Sync back. TODO: Still needed?
+    //    if( err ){
+    //        assert(!err); err = -1; goto endFn; }
+    //}
 
     err = 0;
 endFn:
@@ -828,11 +861,12 @@ endFn:
 }
 
 
-static ssize_t pull( Resclone*resclone ){
-    ssize_t err;
+static void pull( void*cls_ ){
+    Resclone*const resclone = assert_is_Resclone(cls_);
+    int err;
     ClsDload *dload = NULL;
 
-    if( resclone->file == NULL && isatty(1) ){
+    if( resclone->file == NULL /*TODO && isatty(1)*/ ){
         fprintf(stderr, "%s\n",
             "[ERROR] Are you sure you wanna write binary content to tty?");
         err = -1; goto endFn;
@@ -842,46 +876,44 @@ static ssize_t pull( Resclone*resclone ){
     dload->resclone = resclone;
     dload->rootUrl = resclone->url;
     dload->archiveFile = resclone->file;
-    dload->curl = curl_easy_init();
-    if( dload->curl == NULL ){
-        fprintf(stderr, "%s\n", "[ERROR] curl_easy_init() -> NULL");
-        err = -1; goto endFn;
-    }
 
     err = gateleenResclone_download(dload, NULL, NULL);
     if( err ){
         err = -1; goto endFn; }
 
-    if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
-        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
-            err, "): ", archive_error_string(dload->dstArchive));
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_snwAAHEGAAC1VgAA");
+    //if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
+    //    fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
+    //        err, "): ", archive_error_string(dload->dstArchive));
+    //    err = -1; goto endFn;
+    //}
 
     err = 0;
 endFn:
     if( dload ){
-        curl_easy_cleanup(dload->curl);
-        archive_entry_free(dload->tmpEntry); dload->tmpEntry = NULL;
-        archive_write_free(dload->dstArchive); dload->dstArchive = NULL;
+        LOGW("[WARN ] TODO_Kh0AAJJLAACsXwAA fix resource-leak here\n");
+        //archive_entry_free(dload->tmpEntry); dload->tmpEntry = NULL;
+        //archive_write_free(dload->dstArchive); dload->dstArchive = NULL;
     }
-    return err;
+    if( err ){ LOGW("[WARN ] retval ignored: %d\n", err); }
 }
 
 
-static ssize_t push( Resclone*resclone ){
-    ssize_t err;
+static void push( void*cls_ ){
+    Resclone*const resclone = assert_is_Resclone(cls_);
+    int err;
     Upload *upload = NULL;
 
     Upload _1={0}; upload =&_1;
     upload->resclone = resclone;
     upload->archiveFile = resclone->file;
     upload->rootUrl = resclone->url;
-    upload->curl = curl_easy_init();
-    if( ! upload->curl ){
-        fprintf(stderr, "%s\n", "[ERROR] curl_easy_init() -> NULL");
-        err = -1; goto endFn;
-    }
+    assert(!"TODO_6mwAAO5BAACYTAAA");
+    //upload->curl = curl_easy_init();
+    //if( ! upload->curl ){
+    //    fprintf(stderr, "%s\n", "[ERROR] curl_easy_init() -> NULL");
+    //    err = -1; goto endFn;
+    //}
 
     err = readArchive(upload);
     if( err ){
@@ -890,40 +922,45 @@ static ssize_t push( Resclone*resclone ){
     err = 0;
 endFn:
     if( upload ){
-        curl_easy_cleanup(upload->curl);
-        archive_read_free(upload->srcArchive);
+        assert(!"TODO_B2AAAIBdAADcJAAA");
+        //curl_easy_cleanup(upload->curl);
+        //archive_read_free(upload->srcArchive);
     }
-    return err;
+    if( err ){ LOGW("[WARN ] retval ignored: %d @%s:%d\n", err, __FILE__, __LINE__); }
 }
 
 
-ssize_t gateleenResclone_run( int argc, char**argv ){
-    ssize_t err;
-    Resclone *resclone = NULL;
-
-    resclone = Resclone_alloc();
-    if( resclone == NULL ){
-        err = -1; goto endFn; }
+int gateleenResclone_run( int argc, char**argv ){
+    int err;
+    Resclone *resclone = &(Resclone){
+        .mAGIC = Resclone_mAGIC,
+    };
 
     err = parseArgs(argc, argv, &resclone->mode, &resclone->url, &resclone->filter,
         &resclone->filter_len, &resclone->isFilterFull, &resclone->file);
     if( err ){
         err = -1; goto endFn; }
 
+    if( initEnv(resclone) ){ LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto endFn; }
+
     if( resclone->mode == MODE_FETCH ){
-        err = pull(resclone); goto endFn;
+        FN_Env_enque(resclone->env, pull, resclone);
     }else if( resclone->mode == MODE_PUSH ){
-        err = push(resclone); goto endFn;
+        FN_Env_enque(resclone->env, push, resclone);
     }else{
         err = -1; goto endFn;
     }
+
+    LOGT("[TRACE] Env_runUntilDone() ...\n");
+    FN_Env_runUntilDone(resclone->env);
+    LOGT("[TRACE] Env_runUntilDone() ret\n");
+    goto endFn;
 
     assert(!"Unreachable");
 endFn:
     parseArgs(-1, argv, &resclone->mode, &resclone->url, &resclone->filter, &resclone->filter_len,
         &resclone->isFilterFull, &resclone->file);
     resclone->mode = MODE_NULL; resclone->url = NULL; resclone->file = NULL;
-    Resclone_free(resclone);
     return err;
 }
 
