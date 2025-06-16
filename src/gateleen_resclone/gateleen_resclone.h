@@ -15,7 +15,9 @@
 
 
 #define LOGF(...) fprintf(stderr, __VA_ARGS__)
+#define LOGE(...) fprintf(stderr, __VA_ARGS__)
 #define LOGW(...) fprintf(stderr, __VA_ARGS__)
+#define LOGI(...) fprintf(stderr, __VA_ARGS__)
 #define LOGD(...) fprintf(stderr, __VA_ARGS__)
 #define LOGT(...) fprintf(stderr, __VA_ARGS__)
 
@@ -40,6 +42,8 @@ typedef enum OpMode {
 #define Resclone_mAGIC 0xA5450000
 typedef struct Resclone {
     unsigned mAGIC;
+	int state_pull;
+	int eno;
     enum OpMode mode;
     /** Base URL where to upload to / download from. */
     char *url;

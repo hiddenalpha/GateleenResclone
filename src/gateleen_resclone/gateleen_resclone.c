@@ -47,10 +47,8 @@ typedef struct ClsDload {
     struct Resclone *resclone;
 	int state_gateleenResclone_download;
     char *rootUrl;
-	char *name;
 	char *url;  int url_len;
 	int resUrl_len; /* TODO maybe in wrong closure? */
-	int httpRspCode;
     struct Garbage_HttpClientReq **req; /*TODO unref*/
     struct archive *dstArchive;
     struct archive_entry *tmpEntry;
@@ -66,10 +64,10 @@ typedef struct ResourceDir {
     struct ClsDload *dload;
     //yajl_handle yajl; <- TODO Obsolete
     struct ResourceDir *parentDir;
+	short httpRspCode;
     char *rspBody;
     size_t rspBody_len;
     size_t rspBody_cap;
-    short rspCode;
     char *name;
 	void(*onDone)(int,void*);
 	void*onDoneArg;
@@ -113,37 +111,41 @@ TPL_ARRAY(str, char*, 16);
 
 
 static void gateleenResclone_download_kontinue( void* );
+static void pull( void* );
 
 
 static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l ){
 #if !NDEBUG
-    if( !p ){ LOGF("assert(resclone != NULL) @ %s:%d\n", f, l); abort(); }
-    Resclone const*const q = p;
-    if( q->mAGIC != Resclone_mAGIC ){ LOGF("assert(mAGIC == Resclone_mAGIC) @ %s:%d\n", f, l); }
+	if( !p ){ LOGF("assert(resclone != NULL) @ %s:%d\n", f, l); abort(); }
+	Resclone const*const q = p;
+	if( q->mAGIC != Resclone_mAGIC ){
+		LOGF("assert(mAGIC == Resclone_mAGIC) @ %s:%d\n", f, l); abort(); }
 #endif
-    return p;
+	return p;
 }
 #define assert_is_Resclone(p) assert_is_Resclone(p, __FILE__, __LINE__)
 
 
 static inline struct ClsDload* assert_is_ClsDload( void*p, char const*f, int l ){
 #if !NDEBUG
-    if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
-    ClsDload const*const q = p;
-    if( q->mAGIC != ClsDload_mAGIC ){ LOGF("assert(mAGIC == ClsDload_mAGIC) @ %s:%d\n", f, l); abort(); }
+	if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
+	ClsDload const*const q = p;
+	if( q->mAGIC != ClsDload_mAGIC ){
+		LOGF("assert(mAGIC == ClsDload_mAGIC) @ %s:%d\n", f, l); abort(); }
 #endif
-    return p;
+	return p;
 }
 #define assert_is_ClsDload(p) assert_is_ClsDload(p, __FILE__, __LINE__)
 
 
 static inline struct ResourceDir* assert_is_ResourceDir( void*p, char const*f, int l ){
 #if !NDEBUG
-    if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
-    ResourceDir const*const q = p;
-    if( q->mAGIC != ResourceDir_mAGIC ){ LOGF("assert(mAGIC == ResourceDir_mAGIC) @ %s:%d\n", f, l); abort(); }
+	if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
+	ResourceDir const*const q = p;
+	if( q->mAGIC != ResourceDir_mAGIC ){
+		LOGF("assert(mAGIC == ResourceDir_mAGIC) @ %s:%d\n", f, l); abort(); }
 #endif
-    return p;
+	return p;
 }
 #define assert_is_ResourceDir(p) assert_is_ResourceDir(p, __FILE__, __LINE__)
 
@@ -549,14 +551,14 @@ static void onDloadRspHdr(
 	struct Garbage_HttpClientReq**req,
 	void*cls_
 ){
-	ClsDload*const dload = assert_is_ClsDload(cls_);
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	if( rspCode != 200 ){
 		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
 		for( int i=0 ; i < hdrs_cnt ; ++i ){
 			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
 		}
 	}
-	dload->httpRspCode = rspCode;
+	resourceDir->httpRspCode = rspCode;
 }
 
 
@@ -566,8 +568,8 @@ static void onDloadRspBody(
 	void*cls_
 ){
 	LOGT("[TRACE] %s()\n", __func__);
-	ClsDload*const dload = assert_is_ClsDload(cls_);
-	if( dload->httpRspCode != 200 ){ return; }
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	if( resourceDir->httpRspCode != 200 ){ return; }
 	if( buf_len < 0 ){ /* error */
 		LOGD("TODO: %d  %s:%d\n", buf_len, __FILE__, __LINE__); abort();
 		return;
@@ -586,9 +588,9 @@ static void onDloadRspBody(
 
 static void onDloadRspDone( struct Garbage_HttpClientReq**req, void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
-	ClsDload*const dload = assert_is_ClsDload(cls_);
-	(*dload->resclone->env)->enqueBlocking(
-		dload->resclone->env, gateleenResclone_download_kontinue, dload);
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	(*resourceDir->dload->resclone->env)->enqueBlocking(resourceDir->dload->resclone->env,
+		gateleenResclone_download_kontinue, resourceDir);
 }
 
 
@@ -602,15 +604,16 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 	enum { begin=0, sywgOcZGKrgTP3onF, };
 	switch( CORO_STATE ){case begin:{
 
-		if( !dload->name ){
+		if( !resourceDir->name ){
 			/* Is the case when its the root call and not a recursive one */
-			dload->name = dload->rootUrl;
+			resourceDir->name = dload->rootUrl;
 		}
 
 		/* setup URL */
 		{
 			dload->url_len = 0;
 			for( ResourceDir*d=resourceDir ; d ; d=d->parentDir ){
+				assert(d->name);
 				int len = strlen(d->name) - strspn(d->name, "/");
 				dload->url_len += len;
 			}
@@ -636,23 +639,23 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		};
 		char const *host = "127.0.0.1"; LOGW("[WARN ] TODO_6QsAAK50AADZwAAh host hardcoded here\n");
 		uint_least16_t port = 7013; LOGW("[WARN ] TODO_CBkAAEUIAADVcgAA port hardcoded here\n");
-		dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, dload->url, NULL, 0, &requestMentor, dload);
+		dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, dload->url, NULL, 0, &requestMentor, resourceDir);
 		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
 		FN_HttpClientReq_closeSnk(dload->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;
 		FN_HttpClientReq_resume(dload->req);
 		return;
 	}case sywgOcZGKrgTP3onF:{
-		if( resourceDir->rspCode == ERR_PARSE_DIR_LIST ){
+		if( resourceDir->httpRspCode == ERR_PARSE_DIR_LIST ){
 			/* Already logged by sub-ctxt. Simply skip to next entry. */
 			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
-		if( resourceDir->rspCode != 200 ){
+		if( resourceDir->httpRspCode != 200 ){
 			// Ugh? Just one request earlier, server said there's a directory on
 			// that URL. Nevermind. Just skip it and at least download the other
 			// stuff.
-			fprintf(stderr, "%s%d%s%s%s\n", "[INFO ] Skip HTTP ", resourceDir->rspCode, " -> '", dload->url, "'");
+			LOGI("[INFO ] Skip HTTP %d -> '%s'\n", resourceDir->httpRspCode, dload->url);
 			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
@@ -740,6 +743,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 	}endWithEno:{
 		void(*onDone)(int,void*) = resourceDir->onDone ; resourceDir->onDone = NULL;
 		onDone(resourceDir->eno, resourceDir->onDoneArg);
+		return;
 	}}
 	LOGD("assert(s != %d)  %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
 	#undef CORO_GOTO
@@ -956,44 +960,68 @@ endFn:
 }
 
 
+static void pull_onDownloadDone( int eno, void*cls_ ){
+	ClsDload*const dload = assert_is_ClsDload(cls_);
+	if( eno ){
+		LOGE("%s: Download failed\n  @ %s:%d\n", strerrname(-eno), __FILE__, __LINE__);
+		return;
+	}
+	pull(dload->resclone);
+}
+
+
 static void pull( void*cls_ ){
-    Resclone*const resclone = assert_is_Resclone(cls_);
-    int err;
+	Resclone*const resclone = assert_is_Resclone(cls_);
+	int err;
 	ClsDload *dload = NULL;
+	#define CORO_STATE (resclone->state_pull)
+	#define CORO_GOTO(S) goto S
+	enum { begin=0, sArUiyl2d1oYejma4, };
+	switch( CORO_STATE ){case begin:{
+		if( resclone->file == NULL && isatty(1) ){
+			fprintf(stderr, "%s\n",
+				"[ERROR] Are you sure you wanna write binary content to tty?");
+			resclone->eno = -1; CORO_GOTO(endWithEno);
+		}
 
-    if( resclone->file == NULL && isatty(1) ){
-        fprintf(stderr, "%s\n",
-            "[ERROR] Are you sure you wanna write binary content to tty?");
-        err = -1; goto endFn;
-    }
+		dload = Mallocator_realloc(resclone->mallocator, NULL, 0, sizeof*dload);
+		if( !dload ){
+			err = -errno;
+			LOGD("%s: Mallocator_realloc()\n  @ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+			resclone->eno = err; CORO_GOTO(endWithEno);
+		}
+		*dload = (ClsDload){
+			.mAGIC = ClsDload_mAGIC,
+			.resclone = resclone,
+			.rootUrl = resclone->url,
+			.archiveFile = resclone->file,
+		}; assert_is_ClsDload(dload);
+		CORO_STATE = sArUiyl2d1oYejma4;
+		gateleenResclone_download(dload, NULL, NULL, pull_onDownloadDone, dload);
+		return;
+	}case sArUiyl2d1oYejma4:{
+		LOGW("[TODO ] need to go async here, because above func does _EezDZpWtDtN6yi2F_\n");
 
-	dload = Mallocator_realloc(resclone->mallocator, NULL, 0, sizeof*dload);
-	if( !dload ){ assert(!"realloc() != NULL"); }
-	*dload = (ClsDload){
-		.mAGIC = ClsDload_mAGIC,
-		.resclone = resclone,
-		.rootUrl = resclone->url,
-		.archiveFile = resclone->file,
-	}; assert_is_ClsDload(dload);
+		// assert(!"TODO_snwAAHEGAAC1VgAA");
+		// if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
+		//     fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
+		//         err, "): ", archive_error_string(dload->dstArchive));
+		//     err = -1; goto endFn;
+		// }
+		//
+		// err = 0;
 
-	gateleenResclone_download(dload, NULL, NULL, NULL/*TODO*/, dload);
-	LOGW("[TODO ] need to go async here, because above func does _EezDZpWtDtN6yi2F_\n");
-
-//    assert(!"TODO_snwAAHEGAAC1VgAA");
-//    if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
-//        fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
-//            err, "): ", archive_error_string(dload->dstArchive));
-//        err = -1; goto endFn;
-//    }
-//
-//    err = 0;
-endFn:
-    if( dload ){
-        LOGW("[WARN ] TODO_Kh0AAJJLAACsXwAA fix resource-leak here\n");
-//        archive_entry_free(dload->tmpEntry); dload->tmpEntry = NULL;
-//        archive_write_free(dload->dstArchive); dload->dstArchive = NULL;
-    }
-    if( err ){ LOGW("[WARN ] retval ignored: %d\n", err); }
+	}endWithEno:{
+		if( dload ){
+			LOGW("[WARN ] TODO_Kh0AAJJLAACsXwAA fix resource-leak here\n");
+		//archive_entry_free(dload->tmpEntry); dload->tmpEntry = NULL;
+		//archive_write_free(dload->dstArchive); dload->dstArchive = NULL;
+		}
+		LOGI("[INFO ] Pull Done with %d\n", resclone->eno);
+		/* TODO cleanup */
+	}}
+	#undef CORO_STATE
+	#undef CORO_GOTO
 }
 
 
