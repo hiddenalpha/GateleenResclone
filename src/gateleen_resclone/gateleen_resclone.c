@@ -47,6 +47,9 @@ typedef struct ClsDload {
     struct Resclone *resclone;
 	int state_gateleenResclone_download;
     char *rootUrl;
+	char *name;
+	char *url;  int url_len;
+	int resUrl_len; /* TODO maybe in wrong closure? */
 	int httpRspCode;
     struct Garbage_HttpClientReq **req; /*TODO unref*/
     struct archive *dstArchive;
@@ -56,7 +59,10 @@ typedef struct ClsDload {
 
 
 /** Closure for a collection (directory) download. */
+#define ResourceDir_mAGIC 0xE06C2536
 typedef struct ResourceDir {
+	unsigned mAGIC;
+	int eno;
     struct ClsDload *dload;
     //yajl_handle yajl; <- TODO Obsolete
     struct ResourceDir *parentDir;
@@ -65,6 +71,8 @@ typedef struct ResourceDir {
     size_t rspBody_cap;
     short rspCode;
     char *name;
+	void(*onDone)(int,void*);
+	void*onDoneArg;
 } ResourceDir;
 
 
@@ -104,6 +112,9 @@ typedef struct Put {
 TPL_ARRAY(str, char*, 16);
 
 
+static void gateleenResclone_download_kontinue( void* );
+
+
 static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l ){
 #if !NDEBUG
     if( !p ){ LOGF("assert(resclone != NULL) @ %s:%d\n", f, l); abort(); }
@@ -114,6 +125,7 @@ static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l )
 }
 #define assert_is_Resclone(p) assert_is_Resclone(p, __FILE__, __LINE__)
 
+
 static inline struct ClsDload* assert_is_ClsDload( void*p, char const*f, int l ){
 #if !NDEBUG
     if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
@@ -123,6 +135,17 @@ static inline struct ClsDload* assert_is_ClsDload( void*p, char const*f, int l )
     return p;
 }
 #define assert_is_ClsDload(p) assert_is_ClsDload(p, __FILE__, __LINE__)
+
+
+static inline struct ResourceDir* assert_is_ResourceDir( void*p, char const*f, int l ){
+#if !NDEBUG
+    if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
+    ResourceDir const*const q = p;
+    if( q->mAGIC != ResourceDir_mAGIC ){ LOGF("assert(mAGIC == ResourceDir_mAGIC) @ %s:%d\n", f, l); abort(); }
+#endif
+    return p;
+}
+#define assert_is_ResourceDir(p) assert_is_ResourceDir(p, __FILE__, __LINE__)
 
 
 static void printHelp( void ){
@@ -519,12 +542,12 @@ static void onDloadError( int retval, void*cls_ ){
 
 
 static void onDloadRspHdr(
-    const char*proto, int proto_len,
-    int rspCode,
-    const char*phrase, int phrase_len,
-    const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
-    struct Garbage_HttpClientReq**req,
-    void*cls_
+	const char*proto, int proto_len,
+	int rspCode,
+	const char*phrase, int phrase_len,
+	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
+	struct Garbage_HttpClientReq**req,
+	void*cls_
 ){
 	ClsDload*const dload = assert_is_ClsDload(cls_);
 	if( rspCode != 200 ){
@@ -561,69 +584,47 @@ static void onDloadRspBody(
 }
 
 
-static void onDloadRspDone( struct Garbage_HttpClientReq**req, void*cls ){
+static void onDloadRspDone( struct Garbage_HttpClientReq**req, void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
-	Resclone*const resclone = assert_is_Resclone(cls_);
-	assert(!"TODO_4kYAAJI2AACYVQAA");
+	ClsDload*const dload = assert_is_ClsDload(cls_);
+	(*dload->resclone->env)->enqueBlocking(
+		dload->resclone->env, gateleenResclone_download_kontinue, dload);
 }
 
 
-/** Gets called for every resource to scan/download.
- * HINT: Gets called recursively. */
-static void gateleenResclone_download(
-	ClsDload*dload,
-	ResourceDir*parentResourceDir,
-	char*entryName,
-	void(*onDone)(int,void*),
-	void*onDoneArg
-){
-	assert_is_ClsDload(dload);
-	LOGT("[TRACE] %s()\n", __func__);
-    int err;
-    char *url = NULL;
-    int url_len = 0;
-    // OBSOLETE cJSON *jsonRoot = NULL;
-    int resUrl_len = 0;
-    ResourceDir *resourceDir = NULL;
-    ResourceFile *resourceFile = NULL;
+static void gateleenResclone_download_kontinue( void*cls_ ){
+	int err;
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	/* TODO is dload maybe the wrong context for some cases in here? */
+	ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
 	#define CORO_STATE (dload->state_gateleenResclone_download)
+	#define CORO_GOTO(S) do{goto S;}while(0)
 	enum { begin=0, sywgOcZGKrgTP3onF, };
 	switch( CORO_STATE ){case begin:{
 
-		if( !entryName ){
+		if( !dload->name ){
 			/* Is the case when its the root call and not a recursive one */
-			entryName = dload->rootUrl;
+			dload->name = dload->rootUrl;
 		}
-
-		/* closure */
-		resourceDir = Mallocator_realloc(
-			dload->resclone->mallocator, NULL, 0, sizeof*resourceDir);
-		/* ^^-- TODO free */
-		if( !resourceDir ){ assert(!"TODO_Hahq0XcbwgpB2tSd"); }
-		*resourceDir = (ResourceDir){
-			.dload = dload,
-			.parentDir = parentResourceDir,
-			.name = strdup(entryName),
-		};
 
 		/* setup URL */
 		{
-			url_len = 0;
+			dload->url_len = 0;
 			for( ResourceDir*d=resourceDir ; d ; d=d->parentDir ){
 				int len = strlen(d->name) - strspn(d->name, "/");
-				url_len += len;
+				dload->url_len += len;
 			}
-			url = Mallocator_realloc(dload->resclone->mallocator, NULL, 0,
-				url_len +1 /*MayPreventReallocLaterForName*/+24);
-			if( !url ){ assert(!"TODO_5pt10Xwq0C4wUdr0"); }
-			char *u = url + url_len;
+			dload->url = Mallocator_realloc(dload->resclone->mallocator, NULL, 0,
+				dload->url_len +1 /*MayPreventReallocLaterForName*/+24);
+			if( !dload->url ){ assert(!"TODO_5pt10Xwq0C4wUdr0"); }
+			char *u = dload->url + dload->url_len;
 			for( ResourceDir*d=resourceDir ; d ; d=d->parentDir ){
 				char *name = d->name + strspn(d->name, "/");
 				int name_len = strlen(name);
 				memcpy(u-name_len, name, name_len); u -= name_len;
 			}
-			url[url_len] = '\0';
-			LOGD("[DEBUG] URL '%s'\n", url);
+			dload->url[dload->url_len] = '\0';
+			LOGD("[DEBUG] URL '%s'\n", dload->url);
 		}
 
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
@@ -634,8 +635,8 @@ static void gateleenResclone_download(
 			.onRspDone = onDloadRspDone,
 		};
 		char const *host = "127.0.0.1"; LOGW("[WARN ] TODO_6QsAAK50AADZwAAh host hardcoded here\n");
-		uint_least16_t port = 80; LOGW("[WARN ] TODO_CBkAAEUIAADVcgAA port hardcoded here\n");
-		dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, url, NULL, 0, &requestMentor, dload);
+		uint_least16_t port = 7013; LOGW("[WARN ] TODO_CBkAAEUIAADVcgAA port hardcoded here\n");
+		dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, dload->url, NULL, 0, &requestMentor, dload);
 		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
 		FN_HttpClientReq_closeSnk(dload->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;
@@ -643,15 +644,16 @@ static void gateleenResclone_download(
 		return;
 	}case sywgOcZGKrgTP3onF:{
 		if( resourceDir->rspCode == ERR_PARSE_DIR_LIST ){
-			err = 0; goto endFn; /* Already logged by sub-ctxt. Simply skip to next entry. */
+			/* Already logged by sub-ctxt. Simply skip to next entry. */
+			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
 		if( resourceDir->rspCode != 200 ){
 			// Ugh? Just one request earlier, server said there's a directory on
 			// that URL. Nevermind. Just skip it and at least download the other
 			// stuff.
-			fprintf(stderr, "%s%d%s%s%s\n", "[INFO ] Skip HTTP ", resourceDir->rspCode, " -> '", url, "'");
-			err = 0; goto endFn;
+			fprintf(stderr, "%s%d%s%s%s\n", "[INFO ] Skip HTTP ", resourceDir->rspCode, " -> '", dload->url, "'");
+			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
 		// Parse the collected response body.
@@ -679,6 +681,8 @@ static void gateleenResclone_download(
 		//}
 
 		/* Iterate all the entries we have to process. */
+		// TODO maybe should move to some closure?
+		ResourceFile *resourceFile = NULL;
 		resourceFile = Mallocator_realloc(
 			dload->resclone->mallocator, NULL, 0, sizeof*resourceFile);
 		if( !resourceFile ){ assert(!"TODO_8ycqPBHOb83H5bTl"); }
@@ -699,30 +703,31 @@ static void gateleenResclone_download(
 
 			err = pathFilterAcceptsEntry(dload, resourceDir, name);
 			if( err < 0 ){ /* ERROR */
-				goto endFn;
+				resourceDir->eno = err; CORO_GOTO(endWithEno);
 			}else if( err == 0 ){ /* REJECT */
-				fprintf(stderr, "%s%s%s%s\n", "[INFO ] Skip     '", url, name, "'  (filtered)");
+				fprintf(stderr, "%s%s%s%s\n", "[INFO ] Skip     '", dload->url, name, "'  (filtered)");
 				continue;
 			}else{ /* ACCEPT */
 				/* Go ahead */
 			}
 
 			if( name[name_len-1] == '/' ){ /* Gateleen reports a 'directory' */
-				fprintf(stderr, "%s%s%s%s\n", "[DEBUG] Scan     '", url, name,"'");
-				gateleenResclone_download(dload, resourceDir, name, NULL/*TODO*/, dload);
+				fprintf(stderr, "%s%s%s%s\n", "[DEBUG] Scan     '", dload->url, name,"'");
+				gateleenResclone_download_kontinue(resourceDir);
 				assert(!"TODO_JsJVYoxWdBpunme6");
 				/* old code did continue here, but now we cannot, as above
 				 * func goes async! */
 			}else{ /* Not a 'dir'? Then assume 'file' */
-				int requiredLen = url_len + 1/*slash*/ + name_len;
-				if( resUrl_len < requiredLen ){
+				int requiredLen = dload->url_len + 1/*slash*/ + name_len;
+				if( dload->resUrl_len < requiredLen ){
 					void *tmp = realloc(resourceFile->url, requiredLen +1);
 					if( tmp == NULL ){
-						err = -ENOMEM; goto endFn; }
+						resourceDir->eno = -ENOMEM; CORO_GOTO(endWithEno);
+					}
 					resourceFile->url = tmp;
-					resUrl_len = requiredLen;
+					dload->resUrl_len = requiredLen;
 				}
-				sprintf(resourceFile->url, "%s%s", url, name);
+				sprintf(resourceFile->url, "%s%s", dload->url, name);
 				fprintf(stderr, "%s%s%s\n", "[INFO ] Download '", resourceFile->url, "'");
 				resourceFile->buf_len = 0; // <- Reset before use.
 				collectResourceIntoMemory(resourceFile, resourceFile->url);
@@ -731,27 +736,46 @@ static void gateleenResclone_download(
 
 			iDirEntry += 1;
 		}
-
-		assert(!"TODO_C2KCSa9kD7fgOlIs");
-		assert(onDone);/*TODO move to begin of func*/
-		onDone(-10000-__LINE__, onDoneArg); /*TODO*/
+		resourceDir->eno = 0;
+	}endWithEno:{
+		void(*onDone)(int,void*) = resourceDir->onDone ; resourceDir->onDone = NULL;
+		onDone(resourceDir->eno, resourceDir->onDoneArg);
 	}}
 	LOGD("assert(s != %d)  %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_GOTO
 	#undef CORO_STATE
+}
 
 
-    err = 0; /* OK */
-endFn:
-    // TODO if( jsonRoot != NULL ){ cJSON_Delete(jsonRoot); }
-    if( resourceFile ){
-        free(resourceFile->buf); resourceFile->buf = NULL;
-        free(resourceFile->url); resourceFile->url = NULL;
-    }
-    if( resourceDir ){
-        free(resourceDir->name); resourceDir->name = NULL;
-        free(resourceDir->rspBody); resourceDir->rspBody = NULL;
-    }
-    free(url);
+/** Gets called for every resource to scan/download.
+ * HINT: Gets called recursively. */
+static void gateleenResclone_download(
+	ClsDload*dload,
+	ResourceDir*parentResourceDir,
+	char*entryName,
+	void(*onDone)(int,void*),
+	void*onDoneArg
+){
+	assert_is_ClsDload(dload);
+	assert(onDone);
+	LOGT("[TRACE] %s()\n", __func__);
+    // OBSOLETE cJSON *jsonRoot = NULL;
+
+	/* closure */
+	/* TODO free ------vvvvvvvvvvv */
+	ResourceDir *const resourceDir = Mallocator_realloc(
+		dload->resclone->mallocator, NULL, 0, sizeof*resourceDir);
+	if( !resourceDir ){ assert(!"TODO_Hahq0XcbwgpB2tSd"); }
+	*resourceDir = (ResourceDir){
+		.mAGIC = ResourceDir_mAGIC,
+		.dload = dload,
+		.parentDir = parentResourceDir,
+		.name = (entryName) ? strdup(entryName) : NULL,
+		.onDone = onDone,
+		.onDoneArg = onDoneArg,
+	};
+
+	gateleenResclone_download_kontinue(resourceDir);
 }
 
 
