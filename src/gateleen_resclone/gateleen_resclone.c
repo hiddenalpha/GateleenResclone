@@ -39,10 +39,32 @@
 #endif
 
 
+typedef  struct Resclone  Resclone;
+typedef  struct ClsDload  ClsDload;
+typedef  struct Upload  Upload;
+typedef  struct ResourceDir  ResourceDir;
+typedef  struct ResourceFile  ResourceFile;
+typedef  struct Put  Put;
 
-/** Closure for a download instructed by external caller. */
+
+struct Cls595AB944 /* state of collectResourceIntoMemory() */ {
+	unsigned mAGIC;
+	int coroState;
+	int eno;
+	ResourceFile *resourceFile;
+	void(*onDone)(int err,void*arg);
+	void*onDoneArg;
+};
+
+
+/**
+ * Closure for a download instructed by external caller.
+ *
+ * It represents the single action of a download action during the whole
+ * program livetime. There is either a download OR an upload, but NOT both
+ * during process lifetime. */
 #define ClsDload_mAGIC 0x63036F77
-typedef struct ClsDload {
+struct ClsDload {
     unsigned mAGIC;
     struct Resclone *resclone;
 	int state_gateleenResclone_download;
@@ -53,12 +75,15 @@ typedef struct ClsDload {
     struct archive *dstArchive;
     struct archive_entry *tmpEntry;
     char *archiveFile;
-} ClsDload;
+};
 
 
-/** Closure for a collection (directory) download. */
+/**
+ * Is a specific intermediate node in the tree to transfer. Its count is
+ * dynamic and gets instantiated in a tree structure. the leaf notes
+ * then are `ResourceFile` structure. */
 #define ResourceDir_mAGIC 0xE06C2536
-typedef struct ResourceDir {
+struct ResourceDir {
 	unsigned mAGIC;
 	int eno;
     struct ClsDload *dload;
@@ -69,39 +94,80 @@ typedef struct ResourceDir {
     size_t rspBody_len;
     size_t rspBody_cap;
     char *name;
+	char **childNames;
+	int childNames_len;
+	int currChildName;
+	/**/
+	struct Garbage_JsonTreeParser **jsonParser;
+	/**/
 	void(*onDone)(int,void*);
 	void*onDoneArg;
-} ResourceDir;
+};
 
 
 /** Closure for a file download. */
-typedef struct ResourceFile {
-    struct ClsDload *dload;
+#define ResourceFile_mAGIC 0xEAF41178
+struct ResourceFile {
+	unsigned mAGIC;
+	int eno;
+	int state_iterateNextResourceFile;
+	int iThisChild; /* indicates that this is the n-th child seen from its parent. */
+    struct ResourceDir *resourceDir;
     size_t srcChunkIdx;
-    char *url;
+    char *url;  int url_len;  int url_cap;
     char *buf;
     int buf_len;
     int buf_memSz;
-} ResourceFile;
+	/**/
+	struct Cls595AB944 cls595AB944;
+	/**/
+	void(*onDone)(int,void*);
+	void *onDoneArg;
+};
 
 
-/** Closure for an upload instructed by external caller. */
-typedef struct Upload {
+/**
+ * Closure for an upload instructed by external caller. */
+struct Upload {
     struct Resclone *resclone;
     char *rootUrl;
     char *archiveFile;
     struct archive *srcArchive;
     // OBSOLETE CURL *curl;
-} Upload;
+};
 
 
 /** Closure for a PUT of a single resource. */
-typedef struct Put {
+struct Put {
     struct Upload *upload;
     /* Path (relative to rootUrl) of the resource to be uploaded. */
     char *name;
-} Put;
+};
 
+
+/** Main module handle representing an instance. */
+#define Resclone_mAGIC 0xA5450000
+struct Resclone {
+    unsigned mAGIC;
+	int state_pull;
+	int eno;
+	int exitCode;
+    enum OpMode mode;
+    /** Base URL where to upload to / download from. */
+    char *url;
+    /** Array of regex patterns to use per segment. */
+    regex_t *filter;
+    size_t filter_len;
+    /** Says if only start or whole path needs to match the pattern. */
+    int isFilterFull;
+    /* Path to archive file to use. Using stdin/stdout if NULL. */
+    char *file;
+    /**/
+	struct EnvAndDeps deps;
+    /**/
+    uintptr_t envMem[64];
+    /**/
+};
 
 
 /* Operations ****************************************************************/
@@ -110,6 +176,7 @@ typedef struct Put {
 TPL_ARRAY(str, char*, 16);
 
 
+static void collectResourceIntoMemory( struct Cls595AB944* );
 static void gateleenResclone_download_kontinue( void* );
 static void pull( void* );
 
@@ -148,6 +215,18 @@ static inline struct ResourceDir* assert_is_ResourceDir( void*p, char const*f, i
 	return p;
 }
 #define assert_is_ResourceDir(p) assert_is_ResourceDir(p, __FILE__, __LINE__)
+
+
+static inline struct ResourceFile* assert_is_ResourceFile( void*p, char const*f, int l ){
+#if !NDEBUG
+	if( !p ){ LOGF("assert(clsDload != NULL) @ %s:%d\n", f, l); abort(); }
+	ResourceFile const*const q = p;
+	if( q->mAGIC != ResourceFile_mAGIC ){
+		LOGF("assert(mAGIC == ResourceFile_mAGIC) @ %s:%d\n", f, l); abort(); }
+#endif
+	return p;
+}
+#define assert_is_ResourceFile(p) assert_is_ResourceFile(p, __FILE__, __LINE__)
 
 
 static void printHelp( void ){
@@ -334,6 +413,62 @@ fail:
 }
 
 
+/**
+ * @param url - The input to parse
+ * @param host_beg - will be set to where the host begins.
+ * @param host_len - Will be set to how long host is.
+ * @param port - Will be set to the port. Or will have the same value if
+ *      no port present. */
+static int parseUrl(
+	char const*url, int url_len,
+	int*host_beg, int*host_len,
+	uint_least16_t*port,
+	int*path_beg
+){
+	int i = 0;
+	for(;; ++i ){
+		if( i >= url_len ){ assert(!"TODO_28UXyd6zEw3fnIib"); }
+		if( i == 0 && url[i] == 'h' ) continue;
+		if( i == 1 && url[i] == 't' ) continue;
+		if( i == 2 && url[i] == 't' ) continue;
+		if( i == 3 && url[i] == 'p' ) continue;
+		if( i == 4 && url[i] == ':' ) continue;
+		if( i == 5 && url[i] == '/' ) continue;
+		if( i == 6 && url[i] == '/' ) continue;
+		*host_beg = i;
+		break;
+	}
+	for(;; ++i ){
+		if( i >= url_len ){ assert(!"TODO_28UXyd6zEw3fnIib"); }
+		if( (url[i] >= '0' && url[i] <= '9')
+		||  (url[i] >= 'A' && url[i] <= 'Z')
+		||  (url[i] >= 'a' && url[i] <= 'z')
+		||  url[i] == '-' ||  url[i] == '_' ||  url[i] == '.'
+		) continue;
+		*host_len = i - *host_beg;
+		break;
+	}
+	for(;; ++i ){
+		if( i >= url_len ){ assert(!"TODO_28UXyd6zEw3fnIib"); }
+		if( url[i] == ':' ){ /* port */
+			int port_beg = (i += 1);
+			for(;; ++i ){
+				if( i >= url_len ){ assert(!"TODO_28UXyd6zEw3fnIib"); }
+				if( url[i] < '0' || url[i] > '9' ) break;
+			}
+			char *end;
+			int tmp = strtol(url+port_beg, &end, 10);
+			if( !end ){ assert(!"TODO_T8IZDlPqGlgt3imK"); }
+			*port = tmp;
+			i = end - url;
+		}
+		break;
+	}
+	*path_beg = i;
+	return 0;
+}
+
+
 static size_t onCurlDirRsp( char*buf, size_t size, size_t nmemb, void*ResourceDir_ ){
     int err;
     fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
@@ -372,78 +507,136 @@ endFn:
 }
 
 
-static size_t onResourceChunk( char*buf, size_t size, size_t nmemb, void*ResourceFile_ ){
-    const int buf_len = size * nmemb;
-    ResourceFile *resourceFile = ResourceFile_;
-
-    const int avail = resourceFile->buf_memSz - resourceFile->buf_len;
-    if( avail <= buf_len ){
-        resourceFile->buf_memSz += buf_len - avail +1;
-        void *tmp = realloc(resourceFile->buf , resourceFile->buf_memSz);
-        assert(tmp != NULL); /* TODO error handling */
-        resourceFile->buf = tmp;
-    }
-    char *it = resourceFile->buf + resourceFile->buf_len;
-    memcpy(it, buf, buf_len); it += buf_len;
-    *it = '\0';
-    resourceFile->buf_len = it - resourceFile->buf;
-
-    return buf_len;
+static void onResourceFileHttpRspHdr(
+	const char*proto, int proto_len,
+	int rspCode,
+	const char*phrase, int phrase_len,
+	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
+	struct Garbage_HttpClientReq**req, void*cls_
+){
+	//ResourceFile*const resourceFile = assert_is_ResourceFile(cls_);
+	// TODO if( rspCode != 200 && rspCode != 404 )
+	{
+		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
+		for( int i = 0 ; i < hdrs_cnt ; ++i ){
+			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
+		}
+	}
 }
 
 
-static ssize_t collectResourceIntoMemory( ResourceFile*resourceFile, char*url ){
-    int err;
-    //ClsDload *dload = resourceFile->dload;
-    // OBSOLETE CURL *curl = dload->curl;
-
-    assert(!"TODO_Sn8AAP5mAAC3DAAA");
-    //err =  CURLE_OK!= curl_easy_setopt(curl, CURLOPT_URL, url)
-    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L )
-    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, onResourceChunk)
-    //    || CURLE_OK!= curl_easy_setopt(curl, CURLOPT_WRITEDATA, resourceFile)
-    //    ;
-    //if( err ){ assert(!err); err = -1; goto endFn; }
-
-    assert(!"TODO_Vn4AAGJBAAC3aAAA");
-    // err = curl_easy_perform(curl);
-    //if( err != CURLE_OK ){
-    //    fprintf(stderr, "%s%s%s%s%s"FMT_SIZE_T"%s%s\n", "[ERROR] ", __func__, "(): '",
-    //        url, "' (code ", err, "): ", curl_easy_strerror(err));
-    //    err = -1; goto endFn;
-    //}
-
-    err = 0;
-//endFn:
-    return err;
+/*
+ * Flg 0x4 set means, that this is the last buffer. This is the last callback
+ * called for this http message. */
+static void onResourceFileHttpRspBody(
+	const char*buf, int buf_len, int flg, struct Garbage_HttpClientReq**req, void*cls_
+){
+	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
+	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
+	if( buf_len > 0 ){ /* data */
+		if( resourceFile->buf_len + buf_len >= resourceFile->buf_memSz ){
+			Resclone*const resclone = resourceFile->resourceDir->dload->resclone;
+			size_t oldSz = resourceFile->buf_memSz;
+			resourceFile->buf_memSz = resourceFile->buf_len + buf_len + 512;
+			/* TODO free --vvvvvvvvvvvvvv */
+			void*tmp = Mallocator_realloc(resclone->deps.mallocator,
+				resourceFile->buf, oldSz, resourceFile->buf_memSz*sizeof*resourceFile->buf);
+			if( !tmp ){
+				resourceFile->eno = -errno;
+				LOGT("%s:\n\t@ %s:%d\n", strerrname(-errno), __FILE__, __LINE__);
+				assert(!"TODO_onVtKYESyXQXvCg4");
+			}
+			resourceFile->buf = tmp;
+		}
+		memcpy(resourceFile->buf + resourceFile->buf_len, buf, buf_len);
+		resourceFile->buf_len += buf_len;
+	}
+	if( flg & 4 ){ /* EOF */
+		collectResourceIntoMemory(cls);
+	}
 }
 
 
-static ssize_t copyBufToArchive( ResourceFile*resourceFile ){
-    ssize_t err;
-    ClsDload *dload = resourceFile->dload;
-    //char *fileName = resourceFile->url + strlen(resourceFile->dload->rootUrl);
+static void onResourceFileError( int retval, void*cls_ ){
+	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
+	cls->eno = retval;
+	if( cls->eno ){ LOGT("%s: %.*s\n\t@ %s:%d\n", strerrname(-cls->eno),
+		cls->resourceFile->url_len, cls->resourceFile->url, __FILE__, __LINE__); }
+	collectResourceIntoMemory(cls);
+}
 
-    if( ! dload->dstArchive ){
-        /* Setup archive if not setup yet. */
-        assert(!"TODO_PSsAACgdAAALDwAA");
-        //dload->dstArchive = archive_write_new();
-        //err =  archive_write_set_format_pax_restricted(dload->dstArchive)
-        //    || archive_write_open_filename(dload->dstArchive, dload->archiveFile)
-        //    ;
-        //if( err ){
-        //    fprintf(stderr, "%s%s\n", "[ERROR] Failed to setup tar output: ",
-        //        archive_error_string(dload->dstArchive));
-        //    err = -1; goto endFn;
-        //}
-    }
 
-    if( dload->tmpEntry == NULL ){
-        assert(!"TODO_al4AAJIqAABYMgAA"); //dload->tmpEntry = archive_entry_new();
-    }else{
-        assert(!"TODO_il0AADpaAAArYAAA"); //dload->tmpEntry = archive_entry_clear(dload->tmpEntry);
-    }
-    assert(!"TODO_ZloAADNWAAA2ZAAA");
+static void collectResourceIntoMemory( struct Cls595AB944*cls ){
+	assert(cls->mAGIC == 0x595AB944);
+	int err;
+
+	#define CORO_STATE (cls->coroState)
+	enum { begin=0, sgDMgDx6HnAdNWWis, };
+	switch( CORO_STATE ){case begin:{
+		assert(cls->onDone);
+		ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
+		ResourceDir*const resourceDir = assert_is_ResourceDir(resourceFile->resourceDir);
+		ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
+		Resclone*const resclone = dload->resclone;
+		/**/
+		static struct Garbage_HttpClientReq_Mentor reqMentor = {
+			.onRspHdr = onResourceFileHttpRspHdr,
+			.onRspBody = onResourceFileHttpRspBody,
+			.onError = onResourceFileError,
+		};
+		int host_beg, host_len, path_beg;
+		uint_least16_t port;
+		err = parseUrl(resourceFile->url, resourceFile->url_len,
+			&host_beg, &host_len, &port, &path_beg);
+		if( err ){ assert(!"TODO_dNkENg9EFSLccljy"); }
+		struct Garbage_HttpClientReq **req;
+		char host[32]; err = snprintf(host, sizeof host,
+			"%.*s", host_len, resourceFile->url+host_beg);
+		assert(err < (int)sizeof host);
+		char *url = resourceFile->url + path_beg;
+		req = newHttpsClientReq(&resclone->deps, "GET", host, port, url, NULL, 0, &reqMentor, cls);
+		if( !req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
+		FN_HttpClientReq_closeSnk(req);
+		CORO_STATE = sgDMgDx6HnAdNWWis;
+		FN_HttpClientReq_resume(req);
+		return;
+	}case sgDMgDx6HnAdNWWis:{
+		if( cls->eno ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); }
+	}/*endWithClsEno*/{
+		void(*onDone)(int,void*) = cls->onDone;  cls->onDone = NULL;
+		assert(onDone);
+		onDone(cls->eno, cls->onDoneArg);
+		return;
+	}}
+	LOGD("assert(s != %d) @ %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_STATE
+}
+
+
+static int onTarOutChunk( void*cls, const char*buf, int buf_len, int flgs ){
+	assert(!"TODO_rNMpiSOlBpJXT2bo");
+}
+
+
+static void copyBufToArchive(
+	ResourceFile*resourceFile,
+	void(*onDone)(int err,void*arg),
+	void*onDoneArg
+){
+	//int err;
+	ClsDload*const dload = resourceFile->resourceDir->dload;
+	char *fileName = resourceFile->url + strlen(dload->rootUrl);
+
+	LOGD("TODO @ %s:%d\n", __FILE__, __LINE__);
+	LOGD("	make newTarEntry\n");
+	LOGD("	for: \"%s\"\n", fileName);
+	LOGD("	with size: %d\n", resourceFile->buf_len);
+
+	Resclone*const resclone = resourceFile->resourceDir->dload->resclone;
+	struct Garbage_TarEnc **tar;
+	tar = newTarEnc(&resclone->deps, onTarOutChunk, resourceFile);
+	/* ^^-- TODO unref */
+
     //archive_entry_set_pathname(dload->tmpEntry, fileName);
     //archive_entry_set_filetype(dload->tmpEntry, AE_IFREG);
     //archive_entry_set_size(dload->tmpEntry, resourceFile->buf_len);
@@ -451,7 +644,6 @@ static ssize_t copyBufToArchive( ResourceFile*resourceFile ){
     //err = archive_write_header(dload->dstArchive, dload->tmpEntry);
     //if( err ){ err = -1; goto endFn; }
 
-    assert(!"TODO_gBQAACAYAACnewAA");
     //ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
     //if( written < 0 ){
     //    fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
@@ -464,17 +656,19 @@ static ssize_t copyBufToArchive( ResourceFile*resourceFile ){
     //}
     resourceFile->buf_len = 0;
 
-    err = 0;
-//endFn:
-    return err;
+	onDone(0, onDoneArg);
 }
 
 
 /** @return 0:Reject, 1:Accept, <0:ERROR */
-static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, const char*nameOrig ){
-    ssize_t err;
-    char *name = strdup(nameOrig);
-    uint_t name_len = strlen(name);
+static int pathFilterAcceptsEntry(
+	ClsDload*dload, ResourceDir*resourceDir, char const*nameOrig, int name_len
+){
+	int err;
+	char *name = Mallocator_realloc(dload->resclone->deps.mallocator, NULL, 0, name_len+1);
+	if( !name ){ assert(errno > 0); return -errno; }
+	memcpy(name, nameOrig, name_len);
+	// TODO needed?  name[name_len] = '\0';
 
     if( dload->resclone->filter ){
         // Count parents to find correct regex to apply.
@@ -483,10 +677,10 @@ static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, 
         // Check if we even have such a long filter at all.
         if( idx >= dload->resclone->filter_len ){
             if( dload->resclone->isFilterFull ){
-                fprintf(stderr, "%s\n", "[DEBUG] Path longer than --filter-full -> reject.");
+                LOGD("[DEBUG] Path longer than --filter-full -> reject.\n");
                 err = 0; goto endFn;
             }else{
-                fprintf(stderr, "%s\n", "[DEBUG] Path longer than --filter-part -> accept.");
+                LOGD("[DEBUG] Path longer than --filter-part -> accept.\n");
                 err = 1; goto endFn;
             }
         }
@@ -496,19 +690,18 @@ static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, 
             restoreEndSlash = !0;
             name[name_len-1] = '\0';
         }
-        fprintf(stderr, "%s%u%s%s%s\n", "[DEBUG] idx=", idx," name='", name, "'");
+        LOGD("[DEBUG] idx=%u name=\"%s\"\n", idx, name);
         regex_t *filterArr = dload->resclone->filter;
         regex_t *r = filterArr + idx;
         err = regexec(r, name, 0, 0, 0);
         if( !err ){
-            fprintf(stderr, "%s\n", "[DEBUG] Segment accepted by filter.");
+            LOGD("[DEBUG] Segment accepted by filter.\n");
             err = 1; /* fall to restoreEndSlash */
         }else if( err == REG_NOMATCH ){
-            fprintf(stderr, "%s\n", "[DEBUG] Segment rejected by filter.");
+            LOGD("[DEBUG] Segment rejected by filter.\n");
             err = 0; /* fall to restoreEndSlash */
         }else{
-            fprintf(stderr, "%s%.*s%s"FMT_SIZE_T"\n", "[ERROR] regexec(rgx, '", (int)name_len, name,
-                "') -> ", err);
+            LOGE("[ERROR] regexec(rgx, \"%.*s\") -> %d\n", name_len, name, err);
             err = -1; /* fall to restoreEndSlash */
         }
         if( restoreEndSlash ){
@@ -519,31 +712,29 @@ static ssize_t pathFilterAcceptsEntry( ClsDload*dload, ResourceDir*resourceDir, 
 
     err = 1; /* accept by default */
 endFn:
-    free(name);
-    return err;
+	Mallocator_realloc(dload->resclone->deps.mallocator, name, name_len+1, 0);
+	return err;
 }
 
 
 static void onDloadPushIoTask( void(*task)(void*arg), void*arg, void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
 	ClsDload*const dload = assert_is_ClsDload(cls_);
-	FN_ThreadPool_enque(dload->resclone->ioWorker, task, arg);
+	FN_ThreadPool_enque(dload->resclone->deps.ioWorker, task, arg);
 }
 
 
 static void onDloadError( int retval, void*cls_ ){
-	ClsDload*const dload = assert_is_ClsDload(cls_);
-	LOGW("%s: onDloadError(%d)\n", strerrname(-retval), retval);
-	assert(*dload->req);
-	LOGT("[TRACE] LINE %d in %s\n", __LINE__, __FILE__);
-	assert((*dload->req)->pause);
-	LOGT("[TRACE] LINE %d in %s\n", __LINE__, __FILE__);
-	// TODO? (*dload->req)->pause(dload->req);
-	// TODO? (*dload->req)->unref(dload->req);
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	LOGW("%s:\n\t@ %s:%d\n", strerrname(-retval), __FILE__, __LINE__);
+	resourceDir->eno = retval;
+	assert(*resourceDir->dload->req);
+	assert((*resourceDir->dload->req)->pause);
+	gateleenResclone_download_kontinue(resourceDir);
 }
 
 
-static void onDloadRspHdr(
+static void onResourceDirHttpRspHdr(
 	const char*proto, int proto_len,
 	int rspCode,
 	const char*phrase, int phrase_len,
@@ -552,48 +743,175 @@ static void onDloadRspHdr(
 	void*cls_
 ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
-	if( rspCode != 200 ){
+	//if( rspCode != 200 ){
 		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
 		for( int i=0 ; i < hdrs_cnt ; ++i ){
 			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
 		}
-	}
+	//}
+	if( rspCode != 200 ){ resourceDir->dload->resclone->exitCode = -1; }
 	resourceDir->httpRspCode = rspCode;
 }
 
 
+static void iterateNextResourceFile( int err, void*cls_ ){
+	ResourceFile*const resourceFile = assert_is_ResourceFile(cls_);
+	assert(resourceFile->onDone);
+	enum { begin=0, sIWV6nnx7FyogLUBz, spz2UiLEf04xmhO14, };
+	#define CORO_STATE (resourceFile->state_iterateNextResourceFile)
+	switch( CORO_STATE ){case begin:{
+		ResourceDir *const resourceDir = resourceFile->resourceDir;
+		ClsDload *const dload = resourceDir->dload;
+		char const *name = resourceDir->childNames[resourceDir->currChildName];  assert(name);
+		int const name_len = strlen(name);
+		err = pathFilterAcceptsEntry(dload, resourceDir, name, name_len);
+		if( err < 0 ){ /* ERROR */
+			resourceFile->eno = err; goto endWithEno;
+		}else if( err == 0 ){ /* REJECT */
+			LOGI("[INFO ] Skip     '%s%.*s'  (filtered)\n", dload->url, name_len , name);
+			resourceFile->eno = -10000-__LINE__;
+			LOGD("TODO: choose better errno(%d)\n\t@ %s:%d \n",
+				resourceFile->eno, __FILE__, __LINE__);
+			goto endWithEno;
+		}
+		assert(name[name_len-1] != '/' && "Why the F** did you call this function then?!?");
+		int requiredLen = dload->url_len + 1/*slash*/ + name_len;
+		if( requiredLen >= resourceFile->url_cap ){
+			void *tmp = Mallocator_realloc(dload->resclone->deps.mallocator,
+				resourceFile->url, resourceFile->url_cap, requiredLen +1);
+			if( !tmp ){ resourceDir->eno = -ENOMEM; goto endWithEno; }
+			resourceFile->url = tmp;
+			resourceFile->url_cap = requiredLen;
+		}
+		err = sprintf(resourceFile->url, "%s%.*s", dload->url, name_len, name);
+		LOGI("[INFO ] Download '%s'\n", resourceFile->url);
+		resourceFile->url_len = err;  assert(err <= resourceFile->url_cap);
+		resourceFile->buf_len = 0; // <- Reset before use.
+		struct Cls595AB944*clsSub = &resourceFile->cls595AB944;
+		assert(clsSub->mAGIC == 0 && "Bad luck. Closure already busy.");
+		*clsSub = (struct Cls595AB944){
+			.mAGIC = 0x595AB944,
+			.resourceFile = resourceFile,
+			.onDone = iterateNextResourceFile,
+			.onDoneArg = resourceFile,
+		};
+		CORO_STATE = sIWV6nnx7FyogLUBz;
+		collectResourceIntoMemory(clsSub);
+		return;
+	}case sIWV6nnx7FyogLUBz:{
+		if( err ){ resourceFile->eno = err; goto endWithEno; }
+		CORO_STATE = spz2UiLEf04xmhO14;
+		copyBufToArchive(resourceFile, iterateNextResourceFile, resourceFile);
+		return;
+	}case spz2UiLEf04xmhO14:{
+		resourceFile->eno = err;
+	}endWithEno:{
+		void(*onDone)(int,void*) = resourceFile->onDone; resourceFile->onDone = NULL;
+		assert(onDone);
+		onDone(resourceFile->eno, resourceFile->onDoneArg);
+	}}
+	#undef CORO_STATE
+}
+
+
+static void fmkKBgMWbr6Scr748( int err, void*cls_ ){
+	if( err < 0 ){ assert(!"TODO_NsR9vBN74QJzVZX5"); }
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	FN_HttpClientReq_resume(resourceDir->dload->req);
+}
+
+
+static void onRspJsonParsed( void*cls_, int err, void*json_ ){
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	if( err ){
+		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
+		LOGW("%s: Failed to parse response JSON\n", strerrname(-err));
+		goto endFn;
+	}
+	struct Garbage_JsonTreeParser_JsonNode const*const rootNode = json_;
+	struct Garbage_JsonTreeParser_JsonNode const*json = rootNode;
+	assert(json->type == '{');
+	if( json->childs_len != 1 ){
+		LOGW("[ERROR] JSON root expected ONE child but got %d\n", json->childs_len);
+		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
+		goto endFn;
+	}
+	if( json->childs[0]->type != '[' ){
+		LOGE("[ERROR] json['%.*s'] expected to be an array. But is not.\n",
+			json->childs[0]->key_len, json->childs[0]->key);
+		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
+		goto endFn;
+	}
+	int const numChilds = json->childs[0]->childs_len;
+	int totalBufLen = 0;
+	for( int i = 0 ; i < numChilds ; ++i ){
+		totalBufLen += json->childs[0]->childs[i]->valStr_len + 1;
+	}
+	totalBufLen += (numChilds +1) * sizeof(char*);
+	resourceDir->childNames = Mallocator_realloc(
+		resourceDir->dload->resclone->deps.mallocator, NULL, 0, totalBufLen);
+	if( !resourceDir->childNames ){ assert(errno > 0); err = -errno;
+		LOGD("%s @ %s:%d", strerror(-err), __FILE__, __LINE__);
+		resourceDir->eno = -errno; goto endFn;
+	}
+	char **nxtPtr = resourceDir->childNames;
+	char *nxtName = ((char*)resourceDir->childNames) + (numChilds + 1) * sizeof*nxtPtr;
+	for( int i = 0 ; i < numChilds ; ++i ){
+		if( json->childs[0]->childs[i]->type != 's' ){
+			LOGE("ERROR: %.*s['%u'] expected to be string. But is not.\n",
+				json->childs[0]->childs[i]->key_len, json->childs[0]->childs[i]->key, i);
+			resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
+			goto endFn;
+		}
+		char const* childName = json->childs[0]->childs[i]->valStr;
+		int const childName_len = json->childs[0]->childs[i]->valStr_len;
+		LOGD("Child: \"%.*s\"\n", childName_len, childName);
+		memcpy(nxtName, childName, childName_len);
+		nxtName[childName_len] = '\0';
+		*nxtPtr++ = nxtName;
+		nxtName += childName_len +1;
+	}
+	resourceDir->childNames_len = numChilds;
+	resourceDir->eno = 0;
+endFn:
+	/* continue dload where we left off. eno gets passed within cls itself. */
+	gateleenResclone_download_kontinue(resourceDir);
+}
+
+
 static void onDloadRspBody(
-	const char*buf, int buf_len,
+	const char*buf, int buf_len, int flgs,
 	struct Garbage_HttpClientReq**req,
 	void*cls_
 ){
-	LOGT("[TRACE] %s()\n", __func__);
+	//LOGT("[TRACE] %s()\n", __func__);
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	if( resourceDir->httpRspCode != 200 ){ return; }
 	if( buf_len < 0 ){ /* error */
 		LOGD("TODO: %d  %s:%d\n", buf_len, __FILE__, __LINE__); abort();
 		return;
 	}
-	if( buf_len > 0 ){ /* body chunk */
-		LOGD("TODO: %d  %s:%d\n", buf_len, __FILE__, __LINE__); abort();
-		return;
+	if( !resourceDir->jsonParser ){
+		resourceDir->jsonParser = newJsonTreeParser(
+			&resourceDir->dload->resclone->deps, onRspJsonParsed, resourceDir);
+		assert(resourceDir->jsonParser && "TODO_GtLfTLwu2EjSFiyW");
 	}
-	if( buf_len == 0 ){ /* EOF */
-		LOGD("TODO: %d  %s:%d\n", buf_len, __FILE__, __LINE__); abort();
+	if( buf_len > 0 || flgs & 4 ){
+		FN_HttpClientReq_pause(resourceDir->dload->req);
+		FN_JsonTreeParser_write(resourceDir->jsonParser,
+			(void*)buf, buf_len, flgs & 4, fmkKBgMWbr6Scr748, resourceDir);
 		return;
 	}
 	assert(!"unreachable");
 }
 
 
-static void onDloadRspDone( struct Garbage_HttpClientReq**req, void*cls_ ){
-	LOGT("[TRACE] %s()\n", __func__);
-	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
-	(*resourceDir->dload->resclone->env)->enqueBlocking(resourceDir->dload->resclone->env,
-		gateleenResclone_download_kontinue, resourceDir);
+static void gateleenResclone_download_kontinue( void* );
+static void gateleenResclone_download_kontinueIV( int i, void*v ){
+	ResourceDir*const resourceDir = assert_is_ResourceDir(v);
+	resourceDir->eno = i;
+	gateleenResclone_download_kontinue(resourceDir);
 }
-
-
 static void gateleenResclone_download_kontinue( void*cls_ ){
 	int err;
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
@@ -601,7 +919,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 	ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
 	#define CORO_STATE (dload->state_gateleenResclone_download)
 	#define CORO_GOTO(S) do{goto S;}while(0)
-	enum { begin=0, sywgOcZGKrgTP3onF, };
+	enum { begin=0, sywgOcZGKrgTP3onF, s0dUcrr4DTg6qM5Ll, };
 	switch( CORO_STATE ){case begin:{
 
 		if( !resourceDir->name ){
@@ -617,7 +935,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 				int len = strlen(d->name) - strspn(d->name, "/");
 				dload->url_len += len;
 			}
-			dload->url = Mallocator_realloc(dload->resclone->mallocator, NULL, 0,
+			dload->url = Mallocator_realloc(dload->resclone->deps.mallocator, NULL, 0,
 				dload->url_len +1 /*MayPreventReallocLaterForName*/+24);
 			if( !dload->url ){ assert(!"TODO_5pt10Xwq0C4wUdr0"); }
 			char *u = dload->url + dload->url_len;
@@ -633,13 +951,18 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
 			.pushIoTask = onDloadPushIoTask,
 			.onError = onDloadError,
-			.onRspHdr = onDloadRspHdr,
+			.onRspHdr = onResourceDirHttpRspHdr,
 			.onRspBody = onDloadRspBody,
-			.onRspDone = onDloadRspDone,
 		};
-		char const *host = "127.0.0.1"; LOGW("[WARN ] TODO_6QsAAK50AADZwAAh host hardcoded here\n");
-		uint_least16_t port = 7013; LOGW("[WARN ] TODO_CBkAAEUIAADVcgAA port hardcoded here\n");
-		dload->req = newHttpsClientReq(dload->resclone, "GET", host, port, dload->url, NULL, 0, &requestMentor, resourceDir);
+		int host_beg, host_len, path_beg;
+		uint_least16_t port;
+		err = parseUrl(dload->url, strlen/*TODO*/(dload->url),
+			&host_beg, &host_len, &port, &path_beg);
+		char host[64]; err = snprintf(host, sizeof host, "%.*s", host_len, dload->url + host_beg);
+		assert(err < (int)sizeof host && "ENOTSUP: hostname too long");
+		char const *path = dload->url + path_beg;
+		dload->req = newHttpsClientReq(&dload->resclone->deps,
+			"GET", host, port, path, NULL, 0, &requestMentor, resourceDir);
 		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
 		FN_HttpClientReq_closeSnk(dload->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;
@@ -647,7 +970,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		return;
 	}case sywgOcZGKrgTP3onF:{
 		if( resourceDir->httpRspCode == ERR_PARSE_DIR_LIST ){
-			/* Already logged by sub-ctxt. Simply skip to next entry. */
+			LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
 			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
@@ -659,87 +982,45 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
-		// Parse the collected response body.
-		assert(!"TODO_WwAAANA1AAAHIAAA");
-		//jsonRoot = cJSON_Parse(resourceDir->rspBody);
-		//if( ! cJSON_IsObject(jsonRoot) ){ // TODO: Handle case
-		//    fprintf(stderr, "%s\n", "[ERROR] JSON root expected to be object but is not.");
-		//    err = -1; goto endFn;
-		//}
-
-		/* Do some validations to get to the payload we're interested in. */
-		assert(!"TODO_EV8AAP4xAACaGQAA");
-		//if( cJSON_GetArraySize(jsonRoot) != 1 ){
-		//    fprintf(stderr, "%s%d\n", "[ERROR] JSON root expected ONE child but got ",
-		//        cJSON_GetArraySize(jsonRoot));
-		//    err = -1; goto endFn;
-		//}
-		//cJSON *data = jsonRoot->child;
-		//fprintf(stderr, "%s%s%s\n", "[DEBUG] Processing json['", data->string, "']");
-		assert(!"TODO_YS4AAFZaAABJMgAA");
-		//if( ! cJSON_IsArray(data) ){
-		//    fprintf(stderr, "%s%s%s\n", "[ERROR] json['", data->string,
-		//        "'] expected to be an array. But is not.");
-		//    err = -1; goto endFn;
-		//}
-
-		/* Iterate all the entries we have to process. */
-		// TODO maybe should move to some closure?
-		ResourceFile *resourceFile = NULL;
-		resourceFile = Mallocator_realloc(
-			dload->resclone->mallocator, NULL, 0, sizeof*resourceFile);
-		if( !resourceFile ){ assert(!"TODO_8ycqPBHOb83H5bTl"); }
-		*resourceFile = (ResourceFile){
-			.dload = dload,
-		};
-		uint_t iDirEntry = 0;
-		assert(!"TODO_sB0AACoAAAGaAAA86"); // for( cJSON *arrEntry=data->child ; arrEntry!=NULL ; arrEntry=arrEntry->next ){
-		for(;;){
-			//if( ! cJSON_IsString(arrEntry) ){
-			//    fprintf(stderr, "%s%s%s%u%s\n", "[ERROR] ", data->string, "['", iDirEntry,
-			//        "'] expected to be a string. But is not." );
-			//    err = -1; goto endFn;
-			//}
-			////fprintf(stderr, "%s%s%s%u%s%s\n", "[DEBUG] ", data->string, "[", iDirEntry, "] -> ", arrEntry->valuestring);
-			char *name =  NULL;// TODO  arrEntry->valuestring;
-			int name_len = 0;//TODO strlen(name);
-
-			err = pathFilterAcceptsEntry(dload, resourceDir, name);
-			if( err < 0 ){ /* ERROR */
-				resourceDir->eno = err; CORO_GOTO(endWithEno);
-			}else if( err == 0 ){ /* REJECT */
-				fprintf(stderr, "%s%s%s%s\n", "[INFO ] Skip     '", dload->url, name, "'  (filtered)");
-				continue;
-			}else{ /* ACCEPT */
-				/* Go ahead */
-			}
-
-			if( name[name_len-1] == '/' ){ /* Gateleen reports a 'directory' */
-				fprintf(stderr, "%s%s%s%s\n", "[DEBUG] Scan     '", dload->url, name,"'");
-				gateleenResclone_download_kontinue(resourceDir);
-				assert(!"TODO_JsJVYoxWdBpunme6");
-				/* old code did continue here, but now we cannot, as above
-				 * func goes async! */
-			}else{ /* Not a 'dir'? Then assume 'file' */
-				int requiredLen = dload->url_len + 1/*slash*/ + name_len;
-				if( dload->resUrl_len < requiredLen ){
-					void *tmp = realloc(resourceFile->url, requiredLen +1);
-					if( tmp == NULL ){
-						resourceDir->eno = -ENOMEM; CORO_GOTO(endWithEno);
-					}
-					resourceFile->url = tmp;
-					dload->resUrl_len = requiredLen;
-				}
-				sprintf(resourceFile->url, "%s%s", dload->url, name);
-				fprintf(stderr, "%s%s%s\n", "[INFO ] Download '", resourceFile->url, "'");
-				resourceFile->buf_len = 0; // <- Reset before use.
-				collectResourceIntoMemory(resourceFile, resourceFile->url);
-				copyBufToArchive(resourceFile);
-			}
-
-			iDirEntry += 1;
+		assert(resourceDir->childNames);
+		assert(resourceDir->currChildName < resourceDir->childNames_len);
+		char const *name = resourceDir->childNames[resourceDir->currChildName];
+		assert(name);
+		int const name_len = strlen(name);
+		if( name[name_len-1] == '/' ){ /* Gateleen reports a 'directory' */
+			LOGD("[DEBUG] Scan     '%s%.*s'\n", dload->url, name_len, name);
+			assert(!"TODO i guess we need to go recursive here?");
+			//CORO_STATE = TODO;
+			gateleenResclone_download_kontinue(resourceDir);
+			return;
 		}
-		resourceDir->eno = 0;
+
+		/* prepare for child iteration */
+		ResourceFile *resourceFile = NULL;
+		resourceFile = Mallocator_realloc(dload->resclone->deps.mallocator, NULL, 0, sizeof*resourceFile);
+		if( !resourceFile ){ assert(errno > 0); err = -errno;
+			LOGD("%s:\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+			resourceDir->eno = err; goto endWithEno;
+		}
+
+	}processCurrFile:{
+		assert(!"TODO_eNsYYxgLQaNiGEgt");
+		//*resourceFile = (ResourceFile){
+		//	.mAGIC = ResourceFile_mAGIC,
+		//	.resourceDir = resourceDir,
+		//	.onDone = gateleenResclone_download_kontinueIV,
+		//	.onDoneArg = resourceDir,
+		//};
+		//CORO_STATE = s0dUcrr4DTg6qM5Ll;
+		//iterateNextResourceFile(0, resourceFile);
+		return;
+	}case s0dUcrr4DTg6qM5Ll:{
+		if( resourceDir->eno ){
+			LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
+			goto endWithEno;
+		}
+		resourceDir->currChildName += 1;
+		goto processCurrFile;
 	}endWithEno:{
 		void(*onDone)(int,void*) = resourceDir->onDone ; resourceDir->onDone = NULL;
 		onDone(resourceDir->eno, resourceDir->onDoneArg);
@@ -762,13 +1043,12 @@ static void gateleenResclone_download(
 ){
 	assert_is_ClsDload(dload);
 	assert(onDone);
-	LOGT("[TRACE] %s()\n", __func__);
-    // OBSOLETE cJSON *jsonRoot = NULL;
+	//LOGT("[TRACE] %s()\n", __func__);
 
 	/* closure */
 	/* TODO free ------vvvvvvvvvvv */
 	ResourceDir *const resourceDir = Mallocator_realloc(
-		dload->resclone->mallocator, NULL, 0, sizeof*resourceDir);
+		dload->resclone->deps.mallocator, NULL, 0, sizeof*resourceDir);
 	if( !resourceDir ){ assert(!"TODO_Hahq0XcbwgpB2tSd"); }
 	*resourceDir = (ResourceDir){
 		.mAGIC = ResourceDir_mAGIC,
@@ -963,7 +1243,7 @@ endFn:
 static void pull_onDownloadDone( int eno, void*cls_ ){
 	ClsDload*const dload = assert_is_ClsDload(cls_);
 	if( eno ){
-		LOGE("%s: Download failed\n  @ %s:%d\n", strerrname(-eno), __FILE__, __LINE__);
+		LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
 		return;
 	}
 	pull(dload->resclone);
@@ -984,7 +1264,7 @@ static void pull( void*cls_ ){
 			resclone->eno = -1; CORO_GOTO(endWithEno);
 		}
 
-		dload = Mallocator_realloc(resclone->mallocator, NULL, 0, sizeof*dload);
+		dload = Mallocator_realloc(resclone->deps.mallocator, NULL, 0, sizeof*dload);
 		if( !dload ){
 			err = -errno;
 			LOGD("%s: Mallocator_realloc()\n  @ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
@@ -1000,7 +1280,7 @@ static void pull( void*cls_ ){
 		gateleenResclone_download(dload, NULL, NULL, pull_onDownloadDone, dload);
 		return;
 	}case sArUiyl2d1oYejma4:{
-		LOGW("[TODO ] need to go async here, because above func does _EezDZpWtDtN6yi2F_\n");
+		LOGW("[TODO ] close tar archive\n");
 
 		// assert(!"TODO_snwAAHEGAAC1VgAA");
 		// if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
@@ -1067,19 +1347,20 @@ int gateleenResclone_run( int argc, char**argv ){
     if( err ){
         err = -1; goto endFn; }
 
-    if( initEnv(resclone) ){ LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto endFn; }
+    if( initEnv(&resclone->deps, resclone->envMem, sizeof resclone->envMem) ){
+		LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto endFn;
+	}
 
     if( resclone->mode == MODE_FETCH ){
-        FN_Env_enque(resclone->env, pull, resclone);
+        FN_Env_enque(resclone->deps.env, pull, resclone);
     }else if( resclone->mode == MODE_PUSH ){
-        FN_Env_enque(resclone->env, push, resclone);
+        FN_Env_enque(resclone->deps.env, push, resclone);
     }else{
         err = -1; goto endFn;
     }
 
-    LOGT("[TRACE] Env_runUntilDone() ...\n");
-    FN_Env_runUntilDone(resclone->env);
-    LOGT("[TRACE] Env_runUntilDone() ret\n");
+    FN_Env_runUntilDone(resclone->deps.env);
+	err = resclone->exitCode;
     goto endFn;
 
     assert(!"Unreachable");

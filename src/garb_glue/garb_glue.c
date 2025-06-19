@@ -6,53 +6,64 @@
 #include <Garbage_Bootstrap.h>
 
 
-typedef  struct Resclone  Resclone;
+typedef  struct EnvAndDeps  EnvAndDeps;
 
 
-int initEnv( Resclone*resclone ){
-    resclone->mallocator = Garbage_newMallocator();
-    assert(resclone->mallocator);
-    resclone->env = Garbage_newEnv(&(struct Garbage_Env_Opts){
-        .memBlockToUse = resclone->envMem,
-        .memBlockToUse_sz = sizeof resclone->envMem,
-        .mallocator = resclone->mallocator,
+int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
+    deps->mallocator = Garbage_newMallocator();
+    assert(deps->mallocator);
+    deps->env = Garbage_newEnv(&(struct Garbage_Env_Opts){
+        .memBlockToUse = envMem,
+        .memBlockToUse_sz = envMem_sz,
+        .mallocator = deps->mallocator,
     });
-    assert(resclone->mallocator);
-    resclone->ioWorker = Garbage_newThreadPool(&(struct Garbage_ThreadPool_Opts){
-        .mallocator = resclone->mallocator,
+    assert(deps->mallocator);
+	deps->mainArena = newArenaLinkedList(deps);
+    deps->ioWorker = Garbage_newThreadPool(&(struct Garbage_ThreadPool_Opts){
+        .mallocator = deps->mallocator,
         .numThrds = 2, /*TODO config via environ */
     });
-    assert(resclone->env);  assert(resclone->mallocator);  assert(resclone->ioWorker);
-    resclone->ioMultiplexer = Garbage_newIoMultiplexer(resclone->env, &(struct Garbage_IoMultiplexer_Opts){
-        .mallocator = resclone->mallocator,
-        .ioWorker = resclone->ioWorker,
+    assert(deps->env);  assert(deps->mallocator);  assert(deps->ioWorker);
+    deps->ioMultiplexer = Garbage_newIoMultiplexer(deps->env, &(struct Garbage_IoMultiplexer_Opts){
+        .mallocator = deps->mallocator,
+        .ioWorker = deps->ioWorker,
     });
-    assert(resclone->env);  assert(resclone->mallocator);  assert(resclone->ioMultiplexer);
-    assert(resclone->ioWorker);
-    resclone->socketMgrTls = Garbage_newSocketMgr(resclone->env, &(struct Garbage_SocketMgr_Opts){
-        .mallocator = resclone->mallocator,
-        .ioMultiplexer = resclone->ioMultiplexer,
-        .blockingIoWorker = resclone->ioWorker,
+    assert(deps->env);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
+    assert(deps->ioWorker);
+    deps->socketMgrTls = Garbage_newSocketMgr(deps->env, &(struct Garbage_SocketMgr_Opts){
+        .mallocator = deps->mallocator,
+        .ioMultiplexer = deps->ioMultiplexer,
+        .blockingIoWorker = deps->ioWorker,
     });
-    assert(resclone->mallocator);  assert(resclone->ioWorker);
-    resclone->networker = Garbage_newNetworker(&(struct Garbage_Networker_Opts){
-        .mallocator = resclone->mallocator,
-        .ioWorker = resclone->ioWorker,
+    assert(deps->mallocator);  assert(deps->ioWorker);
+    deps->networker = Garbage_newNetworker(&(struct Garbage_Networker_Opts){
+        .mallocator = deps->mallocator,
+        .ioWorker = deps->ioWorker,
     });
 	/**/
-	assert(resclone->socketMgrTls);
-	assert(resclone->ioWorker);
-	assert(resclone->networker);
+	assert(deps->socketMgrTls);
+	assert(deps->ioWorker);
+	assert(deps->networker);
 	/**/
-	(*resclone->ioMultiplexer)->start(resclone->ioMultiplexer);
-	(*resclone->ioWorker)->start(resclone->ioWorker);
+	(*deps->ioMultiplexer)->start(deps->ioMultiplexer);
+	(*deps->ioWorker)->start(deps->ioWorker);
 	/**/
 	return 0;
 }
 
 
+struct Garbage_MemoryArena** newArenaLinkedList( EnvAndDeps*deps ){
+	struct Garbage_ArenaLinkedList **impl;
+	impl = Garbage_newArenaLinkedList(&(struct Garbage_ArenaLinkedList_Opts){
+		.mallocator = deps->mallocator,
+		.blkSz = 64*1024*1024,
+	});
+	return (*impl)->asMemoryArena(impl);
+}
+
+
 struct Garbage_HttpClientReq** newHttpsClientReq(
-    Resclone*resclone,
+    EnvAndDeps*deps,
     char const*mthd,
     char const*host,
     uint_least16_t port,
@@ -63,12 +74,12 @@ struct Garbage_HttpClientReq** newHttpsClientReq(
     void*mentorCls
 ){
     return Garbage_newHttpClientReq(
-        resclone->env, mentor, mentorCls,
+        deps->env, mentor, mentorCls,
         &(struct Garbage_HttpClientReq_Opts){
-            .mallocator = resclone->mallocator,
-            .socketMgr = resclone->socketMgrTls,
-            .ioWorker = resclone->ioWorker,
-            .networker = resclone->networker,
+            .mallocator = deps->mallocator,
+            .socketMgr = deps->socketMgrTls,
+            .ioWorker = deps->ioWorker,
+            .networker = deps->networker,
             .mthd = mthd,
             .host = host,
             .url = url,
@@ -77,6 +88,37 @@ struct Garbage_HttpClientReq** newHttpsClientReq(
             .hdrs_cnt = hdrs_cnt,
         }
     );
+}
+
+
+struct Garbage_JsonTreeParser** newJsonTreeParser(
+	EnvAndDeps*deps,
+	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
+	void*onJsonResultCls
+){
+	return Garbage_newJsonTreeParser(&(struct Garbage_JsonTreeParser_Opts){
+		.env = deps->env,
+		/*
+		 * TODO pass-in from args an arena, WITH CORRECT LIFETIME . */
+		.scratchArena = deps->mainArena,
+		.jsonArena = deps->mainArena,
+		.cpuWorker = deps->ioWorker, /*TODO fix mismatch*/
+		.onJsonResult = (void*)onJsonResult, /*TODO fuck cast to deadh*/
+		.cls = onJsonResultCls,
+	});
+}
+
+
+struct Garbage_TarEnc** newTarEnc(
+	EnvAndDeps*deps,
+	int (*onChunk)(void*,const char*,int,int),
+	void*cls
+){
+	return Garbage_newTarEnc(&(struct Garbage_newTarEncOpts){
+		.mallocator = deps->mallocator,
+		.onChunk = onChunk,
+		.cls = cls,
+	});
 }
 
 

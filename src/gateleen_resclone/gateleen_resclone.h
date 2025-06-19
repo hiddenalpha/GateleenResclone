@@ -25,46 +25,31 @@
 #define Mallocator_realloc(A, B, C, D) (*A)->reallocBlocking(A, B, C, D)
 #define FN_ThreadPool_enque(A, B, C) (*A)->enque(A, B, C)
 #define FN_HttpClientReq_closeSnk(A) (*A)->closeSnk(A)
+#define FN_HttpClientReq_pause(A) (*A)->pause(A)
 #define FN_HttpClientReq_resume(A) (*A)->resume(A)
 #define FN_Env_enque(A, B, C) (*A)->enqueBlocking(A, B, C)
 #define FN_Env_runUntilDone(A) (*A)->runUntilDone(A)
+#define FN_JsonTreeParser_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
 
 
 /** Operation mode. */
-typedef enum OpMode {
+typedef  enum OpMode  OpMode; /*<- TODO del*/
+enum OpMode {
     MODE_NULL =0,
     MODE_FETCH=1,
     MODE_PUSH =2
-} OpMode;
+};
 
 
-/** Main module handle representing an instance. */
-#define Resclone_mAGIC 0xA5450000
-typedef struct Resclone {
-    unsigned mAGIC;
-	int state_pull;
-	int eno;
-    enum OpMode mode;
-    /** Base URL where to upload to / download from. */
-    char *url;
-    /** Array of regex patterns to use per segment. */
-    regex_t *filter;
-    size_t filter_len;
-    /** Says if only start or whole path needs to match the pattern. */
-    int isFilterFull;
-    /* Path to archive file to use. Using stdin/stdout if NULL. */
-    char *file;
-    /**/
-    struct Garbage_Env **env;
-    struct Garbage_Mallocator **mallocator;
-    struct Garbage_SocketMgr **socketMgrTls;
-    struct Garbage_IoMultiplexer **ioMultiplexer;
-    struct Garbage_ThreadPool **ioWorker;
-    struct Garbage_Networker **networker;
-    /**/
-    uintptr_t envMem[64];
-    /**/
-} Resclone;
+struct EnvAndDeps {
+	struct Garbage_Env **env;
+	struct Garbage_Mallocator **mallocator;
+	struct Garbage_MemoryArena **mainArena;
+	struct Garbage_SocketMgr **socketMgrTls;
+	struct Garbage_IoMultiplexer **ioMultiplexer;
+	struct Garbage_ThreadPool **ioWorker;
+	struct Garbage_Networker **networker;
+};
 
 
 /** @return
@@ -74,11 +59,11 @@ int
 gateleenResclone_run( int argc , char**argv );
 
 
-int initEnv( struct Resclone* );
+int initEnv( struct EnvAndDeps*, void*, int );
 
 
 struct Garbage_HttpClientReq** newHttpsClientReq(
-    struct Resclone*,
+    struct EnvAndDeps*,
     char const*mthd,
     char const*host,
     uint_least16_t port,
@@ -88,6 +73,18 @@ struct Garbage_HttpClientReq** newHttpsClientReq(
     struct Garbage_HttpClientReq_Mentor*,
     void*mentorCls
 );
+
+
+struct Garbage_JsonTreeParser** newJsonTreeParser(
+	struct EnvAndDeps*,
+	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
+	void*onJsonResultCls
+);
+
+struct Garbage_MemoryArena** newArenaLinkedList( struct EnvAndDeps* );
+
+
+struct Garbage_TarEnc** newTarEnc( struct EnvAndDeps*, int(*)(void*,const char*,int,int), void* );
 
 
 char const*strerrname(int);
