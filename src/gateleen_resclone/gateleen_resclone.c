@@ -57,6 +57,15 @@ struct Cls595AB944 /* state of collectResourceIntoMemory() */ {
 };
 
 
+struct ClsFE7D8786 /* aka copyBufToArchive */ {
+	unsigned mAGIC;
+	int coroState;
+	ResourceFile *resourceFile;
+	void(*onDone)(int err,void*arg);
+	void*onDoneArg;
+};
+
+
 /**
  * Closure for a download instructed by external caller.
  *
@@ -67,11 +76,12 @@ struct Cls595AB944 /* state of collectResourceIntoMemory() */ {
 struct ClsDload {
     unsigned mAGIC;
     struct Resclone *resclone;
-	int state_gateleenResclone_download;
     char *rootUrl;
 	char *url;  int url_len;
 	int resUrl_len; /* TODO maybe in wrong closure? */
     struct Garbage_HttpClientReq **req; /*TODO unref*/
+	struct Garbage_TarEnc **tar;
+	FILE *tarFile;
     struct archive *dstArchive;
     struct archive_entry *tmpEntry;
     char *archiveFile;
@@ -86,8 +96,8 @@ struct ClsDload {
 struct ResourceDir {
 	unsigned mAGIC;
 	int eno;
+	int state_gateleenResclone_download;
     struct ClsDload *dload;
-    //yajl_handle yajl; <- TODO Obsolete
     struct ResourceDir *parentDir;
 	short httpRspCode;
     char *rspBody;
@@ -120,6 +130,7 @@ struct ResourceFile {
     int buf_memSz;
 	/**/
 	struct Cls595AB944 cls595AB944;
+	struct ClsFE7D8786 clsFE7D8786;
 	/**/
 	void(*onDone)(int,void*);
 	void *onDoneArg;
@@ -177,6 +188,7 @@ TPL_ARRAY(str, char*, 16);
 
 
 static void collectResourceIntoMemory( struct Cls595AB944* );
+static void gateleenResclone_download( ClsDload*, ResourceDir*, char*, void(*)(int,void*), void*);
 static void gateleenResclone_download_kontinue( void* );
 static void pull( void* );
 
@@ -256,7 +268,8 @@ static void printHelp( void ){
         "  \n"
         "    --file <path.tar>\n"
         "        (optional) Path to the archive file to read/write. Defaults to\n"
-        "        stdin/stdout if ommitted.\n"
+        "        stdin/stdout if ommitted. Special value \"-\" means to use\n"
+        "        stdin/stdout, even a tty got detected.\n"
         "  \n"
         "  \n"
     );
@@ -347,6 +360,8 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
         (*url)[url_len-1] = '/';
         (*url)[url_len] = '\0';
     }else{
+		/* TODO Mallocator */
+		/* TODO free */
         *url = strdup(*url);
     }
 
@@ -613,8 +628,100 @@ static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 }
 
 
-static int onTarOutChunk( void*cls, const char*buf, int buf_len, int flgs ){
-	assert(!"TODO_rNMpiSOlBpJXT2bo");
+static void onTarOutChunk(
+	void*cls_, const char*buf, int buf_len, int flgs,
+	void(*onDone)(int,void*), void*onDoneArg
+){
+	int err;
+	ResourceFile*const resourceFile = assert_is_ResourceFile(cls_);
+	ClsDload*const dload = assert_is_ClsDload(resourceFile->resourceDir->dload);
+	if( !dload->tarFile ){
+		if( !dload->archiveFile || !strncmp(dload->archiveFile, "-", 2) ){
+			dload->tarFile = stdout;
+		}else{
+			dload->tarFile = fopen(dload->archiveFile, "w");
+			if( !dload->tarFile ){
+				err = -errno;
+				LOGE("%s: \"%s\"\n\t@ %s:%d\n", strerrname(-err), dload->archiveFile,
+					__FILE__, __LINE__);
+				dload->resclone->exitCode = 1;
+				return;
+			}
+		}
+	}
+	err = fwrite(buf, 1, buf_len, dload->tarFile);
+	if( err != buf_len ){ err = -errno;
+		LOGE("%s\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+		dload->resclone->exitCode = 1;
+		return;
+	}
+	onDone(buf_len, onDoneArg);
+}
+
+
+static void copyBufToArchive_kontinue( int err, void*cls_ ){
+	struct ClsFE7D8786*const cls = cls_;  assert(cls->mAGIC == 0xFE7D8786);
+	ResourceFile*const resourceFile = cls->resourceFile;
+	ClsDload*const dload = resourceFile->resourceDir->dload;
+
+	#define CORO_STATE (cls->coroState)
+	enum { begin=0, sE2iEFO6D7uNJ2A85, sX7Vo8fJSSxJAJtHp, };
+	switch( CORO_STATE ){case begin:{
+		Resclone*const resclone = resourceFile->resourceDir->dload->resclone;
+		if( !dload->tar ){
+			dload->tar = newTarEnc(&resclone->deps, onTarOutChunk, resourceFile);
+			assert(dload->tar && "TODO_ZHqUG7mMYW5ySOdp");
+		}
+		char *fileName = resourceFile->url + strlen(dload->rootUrl);
+		int const fileName_len = strlen(fileName);
+		struct Garbage_TarEncHdr tarHdr = {
+			.path = fileName,
+			.path_len = fileName_len,
+			.mode = 0644,
+			.nBodyOctets = resourceFile->buf_len,
+		};
+		CORO_STATE = sE2iEFO6D7uNJ2A85;
+		(*dload->tar)->nextEntry(dload->tar, &tarHdr, copyBufToArchive_kontinue, cls);
+		return;
+	}case sE2iEFO6D7uNJ2A85:{
+		if( err < 0 ) LOGW("%s: TODO_cp6WZH15OGqJtPwt\n\t@ %s:%d\n",
+			strerrname(-err), __FILE__, __LINE__);
+		CORO_STATE = sX7Vo8fJSSxJAJtHp;
+		(*dload->tar)->write(dload->tar, resourceFile->buf, resourceFile->buf_len,
+			copyBufToArchive_kontinue, cls);
+		return;
+	}case sX7Vo8fJSSxJAJtHp:{
+		if( err < 0 ){
+			LOGD("%s: %s\n\t@ %s:%d\n", strerrname(-err),
+				(*dload->tar)->getLastErrorStr(dload->tar), __FILE__, __LINE__);
+			goto endWithErr;
+		}
+		if( err != resourceFile->buf_len ){
+			LOGD("%s: \n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+			err = -EIO; goto endWithErr;
+		}
+		resourceFile->buf_len = 0;
+
+		//ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
+		//if( written < 0 ){
+		//    fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
+		//        archive_error_string(dload->dstArchive));
+		//    err = -1; goto endFn;
+		//}else if( written != resourceFile->buf_len ){
+		//    fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
+		//        resourceFile->buf_len, " bytes. Instead it wrote ", written);
+		//    err = -1; goto endFn;
+		//}
+
+		err = 0;
+	}endWithErr:{
+		cls->mAGIC = 0;
+		void(*onDone)(int,void*) = cls->onDone;  cls->onDone = NULL;
+		onDone(err, cls->onDoneArg);
+		return;
+	}}
+	LOGD("assert(s != %d) @ %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_STATE
 }
 
 
@@ -623,40 +730,15 @@ static void copyBufToArchive(
 	void(*onDone)(int err,void*arg),
 	void*onDoneArg
 ){
-	//int err;
-	ClsDload*const dload = resourceFile->resourceDir->dload;
-	char *fileName = resourceFile->url + strlen(dload->rootUrl);
-
-	LOGD("TODO @ %s:%d\n", __FILE__, __LINE__);
-	LOGD("	make newTarEntry\n");
-	LOGD("	for: \"%s\"\n", fileName);
-	LOGD("	with size: %d\n", resourceFile->buf_len);
-
-	Resclone*const resclone = resourceFile->resourceDir->dload->resclone;
-	struct Garbage_TarEnc **tar;
-	tar = newTarEnc(&resclone->deps, onTarOutChunk, resourceFile);
-	/* ^^-- TODO unref */
-
-    //archive_entry_set_pathname(dload->tmpEntry, fileName);
-    //archive_entry_set_filetype(dload->tmpEntry, AE_IFREG);
-    //archive_entry_set_size(dload->tmpEntry, resourceFile->buf_len);
-    //archive_entry_set_perm(dload->tmpEntry, 0644);
-    //err = archive_write_header(dload->dstArchive, dload->tmpEntry);
-    //if( err ){ err = -1; goto endFn; }
-
-    //ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
-    //if( written < 0 ){
-    //    fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
-    //        archive_error_string(dload->dstArchive));
-    //    err = -1; goto endFn;
-    //}else if( written != resourceFile->buf_len ){
-    //    fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
-    //        resourceFile->buf_len, " bytes. Instead it wrote ", written);
-    //    err = -1; goto endFn;
-    //}
-    resourceFile->buf_len = 0;
-
-	onDone(0, onDoneArg);
+	struct ClsFE7D8786*const cls = &resourceFile->clsFE7D8786;
+	assert(cls->mAGIC == 0 && "clsFE7D8786 already in use.");
+	*cls = (struct ClsFE7D8786){
+		.mAGIC = 0xFE7D8786,
+		.resourceFile = resourceFile,
+		.onDone = onDone,
+		.onDoneArg = onDoneArg,
+	};
+	copyBufToArchive_kontinue(0, cls);
 }
 
 
@@ -743,12 +825,12 @@ static void onResourceDirHttpRspHdr(
 	void*cls_
 ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
-	//if( rspCode != 200 ){
+	if( rspCode != 200 ){
 		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
 		for( int i=0 ; i < hdrs_cnt ; ++i ){
 			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
 		}
-	//}
+	}
 	if( rspCode != 200 ){ resourceDir->dload->resclone->exitCode = -1; }
 	resourceDir->httpRspCode = rspCode;
 }
@@ -906,7 +988,6 @@ static void onDloadRspBody(
 }
 
 
-static void gateleenResclone_download_kontinue( void* );
 static void gateleenResclone_download_kontinueIV( int i, void*v ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(v);
 	resourceDir->eno = i;
@@ -917,9 +998,9 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	/* TODO is dload maybe the wrong context for some cases in here? */
 	ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
-	#define CORO_STATE (dload->state_gateleenResclone_download)
+	#define CORO_STATE (resourceDir->state_gateleenResclone_download)
 	#define CORO_GOTO(S) do{goto S;}while(0)
-	enum { begin=0, sywgOcZGKrgTP3onF, s0dUcrr4DTg6qM5Ll, };
+	enum { begin=0, sywgOcZGKrgTP3onF, onChildDone, };
 	switch( CORO_STATE ){case begin:{
 
 		if( !resourceDir->name ){
@@ -982,45 +1063,49 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 			resourceDir->eno = 0; CORO_GOTO(endWithEno);
 		}
 
+	}nextChild:{
 		assert(resourceDir->childNames);
-		assert(resourceDir->currChildName < resourceDir->childNames_len);
-		char const *name = resourceDir->childNames[resourceDir->currChildName];
+		if( resourceDir->currChildName >= resourceDir->childNames_len ){
+			/* no more childs */
+			resourceDir->eno = 0;  goto endWithEno;
+		}
+		char *name = resourceDir->childNames[resourceDir->currChildName];
 		assert(name);
 		int const name_len = strlen(name);
-		if( name[name_len-1] == '/' ){ /* Gateleen reports a 'directory' */
+		/* Look if Gateleen reports a 'directory'. So we have to "go recursive"
+		 * now. Have fun reading asynchronous code, operating recursively :D */
+		if( name[name_len-1] == '/' ){
 			LOGD("[DEBUG] Scan     '%s%.*s'\n", dload->url, name_len, name);
-			assert(!"TODO i guess we need to go recursive here?");
-			//CORO_STATE = TODO;
-			gateleenResclone_download_kontinue(resourceDir);
+			assert(name[name_len] == '\0');
+			CORO_STATE = onChildDone;
+			gateleenResclone_download(dload, resourceDir, name,
+				gateleenResclone_download_kontinueIV, resourceDir);
 			return;
 		}
-
-		/* prepare for child iteration */
+		/* NOT a dir (aka collection), so we assume leaf (aka file/resource) */
 		ResourceFile *resourceFile = NULL;
-		resourceFile = Mallocator_realloc(dload->resclone->deps.mallocator, NULL, 0, sizeof*resourceFile);
+		resourceFile = Mallocator_realloc(dload->resclone->deps.mallocator,
+			NULL, 0, sizeof*resourceFile);
 		if( !resourceFile ){ assert(errno > 0); err = -errno;
 			LOGD("%s:\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
 			resourceDir->eno = err; goto endWithEno;
 		}
-
-	}processCurrFile:{
-		assert(!"TODO_eNsYYxgLQaNiGEgt");
-		//*resourceFile = (ResourceFile){
-		//	.mAGIC = ResourceFile_mAGIC,
-		//	.resourceDir = resourceDir,
-		//	.onDone = gateleenResclone_download_kontinueIV,
-		//	.onDoneArg = resourceDir,
-		//};
-		//CORO_STATE = s0dUcrr4DTg6qM5Ll;
-		//iterateNextResourceFile(0, resourceFile);
+		*resourceFile = (ResourceFile){
+			.mAGIC = ResourceFile_mAGIC,
+			.resourceDir = resourceDir,
+			.onDone = gateleenResclone_download_kontinueIV,
+			.onDoneArg = resourceDir,
+		};
+		CORO_STATE = onChildDone;
+		iterateNextResourceFile(0, resourceFile);
 		return;
-	}case s0dUcrr4DTg6qM5Ll:{
+	}case onChildDone:{
 		if( resourceDir->eno ){
 			LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
 			goto endWithEno;
 		}
 		resourceDir->currChildName += 1;
-		goto processCurrFile;
+		goto nextChild;
 	}endWithEno:{
 		void(*onDone)(int,void*) = resourceDir->onDone ; resourceDir->onDone = NULL;
 		onDone(resourceDir->eno, resourceDir->onDoneArg);
@@ -1054,6 +1139,8 @@ static void gateleenResclone_download(
 		.mAGIC = ResourceDir_mAGIC,
 		.dload = dload,
 		.parentDir = parentResourceDir,
+		/* TODO Mallocator */
+		/* TODO free */
 		.name = (entryName) ? strdup(entryName) : NULL,
 		.onDone = onDone,
 		.onDoneArg = onDoneArg,
@@ -1267,7 +1354,7 @@ static void pull( void*cls_ ){
 		dload = Mallocator_realloc(resclone->deps.mallocator, NULL, 0, sizeof*dload);
 		if( !dload ){
 			err = -errno;
-			LOGD("%s: Mallocator_realloc()\n  @ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+			LOGD("%s: Mallocator_realloc()\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
 			resclone->eno = err; CORO_GOTO(endWithEno);
 		}
 		*dload = (ClsDload){

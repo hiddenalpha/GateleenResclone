@@ -30,6 +30,7 @@
 #define FN_Env_enque(A, B, C) (*A)->enqueBlocking(A, B, C)
 #define FN_Env_runUntilDone(A) (*A)->runUntilDone(A)
 #define FN_JsonTreeParser_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
+#define FN_TarEnc_nextEntry(A, B) (*A)->nextEntry(A, B)
 
 
 /** Operation mode. */
@@ -84,7 +85,7 @@ struct Garbage_JsonTreeParser** newJsonTreeParser(
 struct Garbage_MemoryArena** newArenaLinkedList( struct EnvAndDeps* );
 
 
-struct Garbage_TarEnc** newTarEnc( struct EnvAndDeps*, int(*)(void*,const char*,int,int), void* );
+struct Garbage_TarEnc** newTarEnc( struct EnvAndDeps*, void(*)(void*,const char*,int,int,void(*)(int,void*),void*), void*);
 
 
 char const*strerrname(int);

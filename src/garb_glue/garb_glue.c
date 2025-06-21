@@ -111,7 +111,7 @@ struct Garbage_JsonTreeParser** newJsonTreeParser(
 
 struct Garbage_TarEnc** newTarEnc(
 	EnvAndDeps*deps,
-	int (*onChunk)(void*,const char*,int,int),
+	void (*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*),
 	void*cls
 ){
 	return Garbage_newTarEnc(&(struct Garbage_newTarEncOpts){
