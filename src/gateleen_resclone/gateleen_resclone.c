@@ -125,6 +125,7 @@ struct ResourceFile {
     struct ResourceDir *resourceDir;
     size_t srcChunkIdx;
     char *url;  int url_len;  int url_cap;
+	int httpRspCode;
     char *buf;
     int buf_len;
     int buf_memSz;
@@ -174,6 +175,10 @@ struct Resclone {
     /* Path to archive file to use. Using stdin/stdout if NULL. */
     char *file;
     /**/
+	union {
+		struct ClsDload clsDload;
+	};
+    /**/
 	struct EnvAndDeps deps;
     /**/
     uintptr_t envMem[64];
@@ -191,6 +196,7 @@ static void collectResourceIntoMemory( struct Cls595AB944* );
 static void gateleenResclone_download( ClsDload*, ResourceDir*, char*, void(*)(int,void*), void*);
 static void gateleenResclone_download_kontinue( void* );
 static void pull( void* );
+static void pull_kontinue( int, void* );
 
 
 static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l ){
@@ -529,9 +535,10 @@ static void onResourceFileHttpRspHdr(
 	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
 	struct Garbage_HttpClientReq**req, void*cls_
 ){
-	//ResourceFile*const resourceFile = assert_is_ResourceFile(cls_);
-	// TODO if( rspCode != 200 && rspCode != 404 )
-	{
+	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
+	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
+	resourceFile->httpRspCode = rspCode;
+	if( rspCode != 200 && rspCode != 404 ){
 		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
 		for( int i = 0 ; i < hdrs_cnt ; ++i ){
 			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
@@ -549,6 +556,7 @@ static void onResourceFileHttpRspBody(
 	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
 	if( buf_len > 0 ){ /* data */
+		if( resourceFile->httpRspCode != 200 ) return;
 		if( resourceFile->buf_len + buf_len >= resourceFile->buf_memSz ){
 			Resclone*const resclone = resourceFile->resourceDir->dload->resclone;
 			size_t oldSz = resourceFile->buf_memSz;
@@ -584,12 +592,12 @@ static void onResourceFileError( int retval, void*cls_ ){
 static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 	assert(cls->mAGIC == 0x595AB944);
 	int err;
+	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
 
 	#define CORO_STATE (cls->coroState)
 	enum { begin=0, sgDMgDx6HnAdNWWis, };
 	switch( CORO_STATE ){case begin:{
 		assert(cls->onDone);
-		ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
 		ResourceDir*const resourceDir = assert_is_ResourceDir(resourceFile->resourceDir);
 		ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
 		Resclone*const resclone = dload->resclone;
@@ -616,6 +624,7 @@ static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 		FN_HttpClientReq_resume(req);
 		return;
 	}case sgDMgDx6HnAdNWWis:{
+		LOGI("[INFO ] %d: %s\n", resourceFile->httpRspCode, resourceFile->url);
 		if( cls->eno ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); }
 	}/*endWithClsEno*/{
 		void(*onDone)(int,void*) = cls->onDone;  cls->onDone = NULL;
@@ -686,10 +695,12 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 	}case sE2iEFO6D7uNJ2A85:{
 		if( err < 0 ) LOGW("%s: TODO_cp6WZH15OGqJtPwt\n\t@ %s:%d\n",
 			strerrname(-err), __FILE__, __LINE__);
-		CORO_STATE = sX7Vo8fJSSxJAJtHp;
-		(*dload->tar)->write(dload->tar, resourceFile->buf, resourceFile->buf_len,
-			copyBufToArchive_kontinue, cls);
-		return;
+		if( resourceFile->buf_len > 0 ){
+			CORO_STATE = sX7Vo8fJSSxJAJtHp;
+			(*dload->tar)->write(dload->tar, resourceFile->buf, resourceFile->buf_len,
+				copyBufToArchive_kontinue, cls);
+			return;
+		}else err = 0;
 	}case sX7Vo8fJSSxJAJtHp:{
 		if( err < 0 ){
 			LOGD("%s: %s\n\t@ %s:%d\n", strerrname(-err),
@@ -701,17 +712,6 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 			err = -EIO; goto endWithErr;
 		}
 		resourceFile->buf_len = 0;
-
-		//ssize_t written = archive_write_data(dload->dstArchive, resourceFile->buf, resourceFile->buf_len);
-		//if( written < 0 ){
-		//    fprintf(stderr, "%s%s\n", "[ERROR] Failed to archive_write_data: ",
-		//        archive_error_string(dload->dstArchive));
-		//    err = -1; goto endFn;
-		//}else if( written != resourceFile->buf_len ){
-		//    fprintf(stderr, "%s%u%s"FMT_SIZE_T"\n", "[ERROR] archive_write_data failed to write all ",
-		//        resourceFile->buf_len, " bytes. Instead it wrote ", written);
-		//    err = -1; goto endFn;
-		//}
 
 		err = 0;
 	}endWithErr:{
@@ -725,7 +725,7 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 }
 
 
-static void copyBufToArchive(
+static inline void copyBufToArchive(
 	ResourceFile*resourceFile,
 	void(*onDone)(int err,void*arg),
 	void*onDoneArg
@@ -800,7 +800,7 @@ endFn:
 
 
 static void onDloadPushIoTask( void(*task)(void*arg), void*arg, void*cls_ ){
-	LOGT("[TRACE] %s()\n", __func__);
+	//LOGT("[TRACE] %s()\n", __func__);
 	ClsDload*const dload = assert_is_ClsDload(cls_);
 	FN_ThreadPool_enque(dload->resclone->deps.ioWorker, task, arg);
 }
@@ -848,25 +848,24 @@ static void iterateNextResourceFile( int err, void*cls_ ){
 		int const name_len = strlen(name);
 		err = pathFilterAcceptsEntry(dload, resourceDir, name, name_len);
 		if( err < 0 ){ /* ERROR */
-			resourceFile->eno = err; goto endWithEno;
+			goto endWithErr;
 		}else if( err == 0 ){ /* REJECT */
 			LOGI("[INFO ] Skip     '%s%.*s'  (filtered)\n", dload->url, name_len , name);
-			resourceFile->eno = -10000-__LINE__;
-			LOGD("TODO: choose better errno(%d)\n\t@ %s:%d \n",
-				resourceFile->eno, __FILE__, __LINE__);
-			goto endWithEno;
+			err = -10000-__LINE__;
+			LOGD("TODO: choose better errno(%d)\n\t@ %s:%d \n", err, __FILE__, __LINE__);
+			goto endWithErr;
 		}
 		assert(name[name_len-1] != '/' && "Why the F** did you call this function then?!?");
 		int requiredLen = dload->url_len + 1/*slash*/ + name_len;
 		if( requiredLen >= resourceFile->url_cap ){
 			void *tmp = Mallocator_realloc(dload->resclone->deps.mallocator,
 				resourceFile->url, resourceFile->url_cap, requiredLen +1);
-			if( !tmp ){ resourceDir->eno = -ENOMEM; goto endWithEno; }
+			if( !tmp ){ err = -ENOMEM; goto endWithErr; }
 			resourceFile->url = tmp;
 			resourceFile->url_cap = requiredLen;
 		}
 		err = sprintf(resourceFile->url, "%s%.*s", dload->url, name_len, name);
-		LOGI("[INFO ] Download '%s'\n", resourceFile->url);
+		//LOGI("[INFO ] Download '%s'\n", resourceFile->url);
 		resourceFile->url_len = err;  assert(err <= resourceFile->url_cap);
 		resourceFile->buf_len = 0; // <- Reset before use.
 		struct Cls595AB944*clsSub = &resourceFile->cls595AB944;
@@ -881,16 +880,18 @@ static void iterateNextResourceFile( int err, void*cls_ ){
 		collectResourceIntoMemory(clsSub);
 		return;
 	}case sIWV6nnx7FyogLUBz:{
-		if( err ){ resourceFile->eno = err; goto endWithEno; }
-		CORO_STATE = spz2UiLEf04xmhO14;
-		copyBufToArchive(resourceFile, iterateNextResourceFile, resourceFile);
-		return;
+		if( err ){ goto endWithErr; }
+		if( resourceFile->httpRspCode == 200 ){
+			CORO_STATE = spz2UiLEf04xmhO14;
+			copyBufToArchive(resourceFile, iterateNextResourceFile, resourceFile);
+			return;
+		}
 	}case spz2UiLEf04xmhO14:{
-		resourceFile->eno = err;
-	}endWithEno:{
+		/* assume err is already set? */
+	}endWithErr:{
 		void(*onDone)(int,void*) = resourceFile->onDone; resourceFile->onDone = NULL;
 		assert(onDone);
-		onDone(resourceFile->eno, resourceFile->onDoneArg);
+		onDone(err, resourceFile->onDoneArg);
 	}}
 	#undef CORO_STATE
 }
@@ -947,7 +948,7 @@ static void onRspJsonParsed( void*cls_, int err, void*json_ ){
 		}
 		char const* childName = json->childs[0]->childs[i]->valStr;
 		int const childName_len = json->childs[0]->childs[i]->valStr_len;
-		LOGD("Child: \"%.*s\"\n", childName_len, childName);
+		//LOGD("Child: \"%.*s\"\n", childName_len, childName);
 		memcpy(nxtName, childName, childName_len);
 		nxtName[childName_len] = '\0';
 		*nxtPtr++ = nxtName;
@@ -1026,7 +1027,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 				memcpy(u-name_len, name, name_len); u -= name_len;
 			}
 			dload->url[dload->url_len] = '\0';
-			LOGD("[DEBUG] URL '%s'\n", dload->url);
+			//LOGD("[DEBUG] URL '%s'\n", dload->url);
 		}
 
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
@@ -1075,7 +1076,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		/* Look if Gateleen reports a 'directory'. So we have to "go recursive"
 		 * now. Have fun reading asynchronous code, operating recursively :D */
 		if( name[name_len-1] == '/' ){
-			LOGD("[DEBUG] Scan     '%s%.*s'\n", dload->url, name_len, name);
+			//LOGD("[DEBUG] Scan     '%s%.*s'\n", dload->url, name_len, name);
 			assert(name[name_len] == '\0');
 			CORO_STATE = onChildDone;
 			gateleenResclone_download(dload, resourceDir, name,
@@ -1108,6 +1109,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		goto nextChild;
 	}endWithEno:{
 		void(*onDone)(int,void*) = resourceDir->onDone ; resourceDir->onDone = NULL;
+		//LOGT("[TRACE] %s() -> %d\n", __func__, resourceDir->eno);
 		onDone(resourceDir->eno, resourceDir->onDoneArg);
 		return;
 	}}
@@ -1119,16 +1121,16 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 
 /** Gets called for every resource to scan/download.
  * HINT: Gets called recursively. */
-static void gateleenResclone_download(
+static inline void gateleenResclone_download(
 	ClsDload*dload,
 	ResourceDir*parentResourceDir,
 	char*entryName,
 	void(*onDone)(int,void*),
 	void*onDoneArg
 ){
+	//LOGT("[TRACE] %s()\n", __func__);
 	assert_is_ClsDload(dload);
 	assert(onDone);
-	//LOGT("[TRACE] %s()\n", __func__);
 
 	/* closure */
 	/* TODO free ------vvvvvvvvvvv */
@@ -1327,47 +1329,30 @@ endFn:
 }
 
 
-static void pull_onDownloadDone( int eno, void*cls_ ){
+static void pull_kontinue( int err, void*cls_ ){
 	ClsDload*const dload = assert_is_ClsDload(cls_);
-	if( eno ){
-		LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
-		return;
-	}
-	pull(dload->resclone);
-}
-
-
-static void pull( void*cls_ ){
-	Resclone*const resclone = assert_is_Resclone(cls_);
-	int err;
-	ClsDload *dload = NULL;
+	Resclone*const resclone = assert_is_Resclone(dload->resclone);
 	#define CORO_STATE (resclone->state_pull)
 	#define CORO_GOTO(S) goto S
-	enum { begin=0, sArUiyl2d1oYejma4, };
+	enum { begin=0, sRgcmUWoHED7pgReU, sArUiyl2d1oYejma4, };
 	switch( CORO_STATE ){case begin:{
 		if( resclone->file == NULL && isatty(1) ){
 			fprintf(stderr, "%s\n",
 				"[ERROR] Are you sure you wanna write binary content to tty?");
 			resclone->eno = -1; CORO_GOTO(endWithEno);
 		}
-
-		dload = Mallocator_realloc(resclone->deps.mallocator, NULL, 0, sizeof*dload);
-		if( !dload ){
-			err = -errno;
-			LOGD("%s: Mallocator_realloc()\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
-			resclone->eno = err; CORO_GOTO(endWithEno);
-		}
-		*dload = (ClsDload){
-			.mAGIC = ClsDload_mAGIC,
-			.resclone = resclone,
-			.rootUrl = resclone->url,
-			.archiveFile = resclone->file,
-		}; assert_is_ClsDload(dload);
 		CORO_STATE = sArUiyl2d1oYejma4;
-		gateleenResclone_download(dload, NULL, NULL, pull_onDownloadDone, dload);
+		gateleenResclone_download(dload, NULL, NULL, pull_kontinue, dload);
 		return;
 	}case sArUiyl2d1oYejma4:{
-		LOGW("[TODO ] close tar archive\n");
+		if( err ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); goto endWithEno; }
+		if( dload->tar ){
+			CORO_STATE = sRgcmUWoHED7pgReU;
+			(*dload->tar)->closeSnk(dload->tar, pull_kontinue, dload);
+			dload->tar = NULL;
+			return;
+		}
+	}case sRgcmUWoHED7pgReU:{
 
 		// assert(!"TODO_snwAAHEGAAC1VgAA");
 		// if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
@@ -1389,6 +1374,20 @@ static void pull( void*cls_ ){
 	}}
 	#undef CORO_STATE
 	#undef CORO_GOTO
+}
+
+
+static void pull( void*cls_ ){
+	Resclone*const resclone = assert_is_Resclone(cls_);
+	ClsDload*const dload = &resclone->clsDload;
+	assert(dload->mAGIC == 0);
+	*dload = (ClsDload){
+		.mAGIC = ClsDload_mAGIC,
+		.resclone = resclone,
+		.rootUrl = resclone->url,
+		.archiveFile = resclone->file,
+	}; assert_is_ClsDload(dload);
+	pull_kontinue(0, dload);
 }
 
 
