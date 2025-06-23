@@ -39,6 +39,9 @@
 #endif
 
 
+#define FLG_printPath (1<<0)
+
+
 typedef  struct Resclone  Resclone;
 typedef  struct ClsDload  ClsDload;
 typedef  struct Upload  Upload;
@@ -76,9 +79,9 @@ struct ClsFE7D8786 /* aka copyBufToArchive */ {
 struct ClsDload {
     unsigned mAGIC;
     struct Resclone *resclone;
-    char *rootUrl;
+    char *rootUrl;  int rootUrl_len;
 	char *url;  int url_len;
-	int resUrl_len; /* TODO maybe in wrong closure? */
+	int resUrl_len; /* TODO get rid of this shit! */
     struct Garbage_HttpClientReq **req; /*TODO unref*/
 	struct Garbage_TarEnc **tar;
 	FILE *tarFile;
@@ -161,6 +164,7 @@ struct Put {
 #define Resclone_mAGIC 0xA5450000
 struct Resclone {
     unsigned mAGIC;
+	int flg;
 	int state_pull;
 	int eno;
 	int exitCode;
@@ -277,14 +281,22 @@ static void printHelp( void ){
         "        stdin/stdout if ommitted. Special value \"-\" means to use\n"
         "        stdin/stdout, even a tty got detected.\n"
         "  \n"
+        "    --print-path\n"
+        "        Print path for every entry actually taken. This does NOT\n"
+        "        include intermediates like collections or those which responded\n"
+        "        non-200 codes.\n"
         "  \n"
     );
 }
 
 
-static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**filter, size_t*filter_cnt, int*isFilterFull, char**file ){
+static int parseArgs(
+	int argc, char**argv, int*flg, OpMode*mode, char**url, regex_t**filter,
+	size_t*filter_cnt, int*isFilterFull, char**file
+){
     ssize_t err;
     char *filterRaw = NULL;
+	char *urlArg = NULL;
     if( argc == -1 ){ // -1 indicates the call to free our resources. So simply jump
         err = 0; goto fail;    // to 'fail' because that has the same effect.
     }
@@ -317,7 +329,7 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
                 fprintf(stderr,"%s\n","EINVAL: Arg '--url' needs a value.");
                 err = -1; goto fail;
             }
-            *url = arg;
+            urlArg = arg;
         }else if( !strcmp(arg,"--filter-full") ){
             if(!( arg=argv[++i] )){
                 fprintf(stderr,"%s\n","EINVAL: Arg '--filter-full' needs a value.");
@@ -342,6 +354,8 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
                 err = -1; goto fail;
             }
             *file = arg;
+        }else if( !strcmp(arg,"--print-path") ){
+            *flg |= FLG_printPath;
         }else{
             fprintf(stderr,"%s%s\n", "EINVAL: Unknown arg ",arg);
             err = -1; goto fail;
@@ -353,22 +367,19 @@ static int parseArgs( int argc, char**argv, OpMode*mode, char**url, regex_t**fil
         err = -1; goto fail;
     }
 
-    if( *url==NULL ){
+    if( !urlArg ){
         fprintf(stderr,"EINVAL: Arg --url missing.\n");
         err = -1; goto fail;
     }
-    uint_t urlFromArgs_len = strlen(*url);
-    if( ((*url)[urlFromArgs_len-1]) != '/' ){
-        char *urlFromArgs = *url;
+    uint_t urlFromArgs_len = strlen(urlArg);
+    if( ((urlArg)[urlFromArgs_len-1]) != '/' ){
         uint_t url_len = urlFromArgs_len + 1;
-        *url = malloc(url_len+1); /* TODO: Should we free this? */
-        memcpy(*url, urlFromArgs, urlFromArgs_len);
+        *url = malloc(url_len+1); /* TODO Mallocator */
+        memcpy(*url, urlArg, urlFromArgs_len);
         (*url)[url_len-1] = '/';
         (*url)[url_len] = '\0';
     }else{
-		/* TODO Mallocator */
-		/* TODO free */
-        *url = strdup(*url);
+        *url = strdup(*url); /* TODO Mallocator */
     }
 
     if( filterRaw ){
@@ -593,14 +604,14 @@ static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 	assert(cls->mAGIC == 0x595AB944);
 	int err;
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
+	ResourceDir*const resourceDir = assert_is_ResourceDir(resourceFile->resourceDir);
+	ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
+	Resclone*const resclone = resourceDir->dload->resclone;
 
 	#define CORO_STATE (cls->coroState)
 	enum { begin=0, sgDMgDx6HnAdNWWis, };
 	switch( CORO_STATE ){case begin:{
 		assert(cls->onDone);
-		ResourceDir*const resourceDir = assert_is_ResourceDir(resourceFile->resourceDir);
-		ClsDload*const dload = assert_is_ClsDload(resourceDir->dload);
-		Resclone*const resclone = dload->resclone;
 		/**/
 		static struct Garbage_HttpClientReq_Mentor reqMentor = {
 			.onRspHdr = onResourceFileHttpRspHdr,
@@ -624,8 +635,12 @@ static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 		FN_HttpClientReq_resume(req);
 		return;
 	}case sgDMgDx6HnAdNWWis:{
-		LOGI("[INFO ] %d: %s\n", resourceFile->httpRspCode, resourceFile->url);
-		if( cls->eno ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); }
+		if( cls->eno ){
+			LOGT("\t@ %s:%d\n", __FILE__, __LINE__);
+		}else if( resclone->flg & FLG_printPath && resourceFile->httpRspCode == 200 ){
+			assert(dload->rootUrl_len < resourceFile->url_len);
+			LOGI("%s\n", resourceFile->url + dload->rootUrl_len);
+		}
 	}/*endWithClsEno*/{
 		void(*onDone)(int,void*) = cls->onDone;  cls->onDone = NULL;
 		assert(onDone);
@@ -681,7 +696,7 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 			dload->tar = newTarEnc(&resclone->deps, onTarOutChunk, resourceFile);
 			assert(dload->tar && "TODO_ZHqUG7mMYW5ySOdp");
 		}
-		char *fileName = resourceFile->url + strlen(dload->rootUrl);
+		char *fileName = resourceFile->url + dload->rootUrl_len;
 		int const fileName_len = strlen(fileName);
 		struct Garbage_TarEncHdr tarHdr = {
 			.path = fileName,
@@ -1353,24 +1368,8 @@ static void pull_kontinue( int err, void*cls_ ){
 			return;
 		}
 	}case sRgcmUWoHED7pgReU:{
-
-		// assert(!"TODO_snwAAHEGAAC1VgAA");
-		// if( dload->dstArchive && archive_write_close(dload->dstArchive) ){
-		//     fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] archive_write_close failed (code ",
-		//         err, "): ", archive_error_string(dload->dstArchive));
-		//     err = -1; goto endFn;
-		// }
-		//
-		// err = 0;
-
 	}endWithEno:{
-		if( dload ){
-			LOGW("[WARN ] TODO_Kh0AAJJLAACsXwAA fix resource-leak here\n");
-		//archive_entry_free(dload->tmpEntry); dload->tmpEntry = NULL;
-		//archive_write_free(dload->dstArchive); dload->dstArchive = NULL;
-		}
-		LOGI("[INFO ] Pull Done with %d\n", resclone->eno);
-		/* TODO cleanup */
+		//LOGI("[INFO ] Pull Done with %d\n", resclone->eno);
 	}}
 	#undef CORO_STATE
 	#undef CORO_GOTO
@@ -1385,6 +1384,7 @@ static void pull( void*cls_ ){
 		.mAGIC = ClsDload_mAGIC,
 		.resclone = resclone,
 		.rootUrl = resclone->url,
+		.rootUrl_len = strlen(resclone->url),
 		.archiveFile = resclone->file,
 	}; assert_is_ClsDload(dload);
 	pull_kontinue(0, dload);
@@ -1401,11 +1401,6 @@ static void push( void*cls_ ){
     upload->archiveFile = resclone->file;
     upload->rootUrl = resclone->url;
     assert(!"TODO_6mwAAO5BAACYTAAA");
-    //upload->curl = curl_easy_init();
-    //if( ! upload->curl ){
-    //    fprintf(stderr, "%s\n", "[ERROR] curl_easy_init() -> NULL");
-    //    err = -1; goto endFn;
-    //}
 
     err = readArchive(upload);
     if( err ){
@@ -1428,10 +1423,9 @@ int gateleenResclone_run( int argc, char**argv ){
         .mAGIC = Resclone_mAGIC,
     };
 
-    err = parseArgs(argc, argv, &resclone->mode, &resclone->url, &resclone->filter,
+    err = parseArgs(argc, argv, &resclone->flg, &resclone->mode, &resclone->url, &resclone->filter,
         &resclone->filter_len, &resclone->isFilterFull, &resclone->file);
-    if( err ){
-        err = -1; goto endFn; }
+    if( err ){ goto endFn; }
 
     if( initEnv(&resclone->deps, resclone->envMem, sizeof resclone->envMem) ){
 		LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto endFn;
@@ -1451,10 +1445,10 @@ int gateleenResclone_run( int argc, char**argv ){
 
     assert(!"Unreachable");
 endFn:
-    parseArgs(-1, argv, &resclone->mode, &resclone->url, &resclone->filter, &resclone->filter_len,
-        &resclone->isFilterFull, &resclone->file);
-    resclone->mode = MODE_NULL; resclone->url = NULL; resclone->file = NULL;
-    return err;
+	parseArgs(-1, argv, &resclone->flg, &resclone->mode, &resclone->url, &resclone->filter,
+		&resclone->filter_len, &resclone->isFilterFull, &resclone->file);
+	resclone->mode = MODE_NULL; resclone->url = NULL; resclone->file = NULL;
+	return err;
 }
 
 
