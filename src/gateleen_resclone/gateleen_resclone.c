@@ -60,6 +60,28 @@ struct Cls595AB944 /* state of collectResourceIntoMemory() */ {
 };
 
 
+struct ClsB5D40F60/* httpPutEntry */{
+	unsigned mAGIC;
+	int coroState;
+	char *name;  int name_len;
+	uint_least64_t nBodyOctets;
+	char *putUrl;
+	struct Garbage_HttpClientReq **req;
+	int readFlgs;
+	char *buf;  int buf_cap;
+	void(*onDone)(int err,void*arg);
+	void*onDoneArg;
+};
+
+
+struct ClsB806037F/* readArchive */{
+	unsigned mAGIC;
+	int coroState;
+	struct Garbage_TarDecHdr *tarHdr;
+	void (*onDone)(int,void*);  void *onDoneArg;
+};
+
+
 struct ClsFE7D8786 /* aka copyBufToArchive */ {
 	unsigned mAGIC;
 	int coroState;
@@ -143,12 +165,21 @@ struct ResourceFile {
 
 /**
  * Closure for an upload instructed by external caller. */
+#define Upload_mAGIC 0x9021B0FE
 struct Upload {
+	unsigned mAGIC;
+	int coroState_push;
     struct Resclone *resclone;
-    char *rootUrl;
+    char *rootUrl;  int rootUrl_len;
     char *archiveFile;
     struct archive *srcArchive;
-    // OBSOLETE CURL *curl;
+	Put *put; /* TODO unused? */
+	/**/
+	struct ClsB5D40F60 clsB5D40F60;
+	struct ClsB806037F clsB806037F;
+	/**/
+	struct Garbage_TarDec **tar;
+	/**/
 };
 
 
@@ -181,6 +212,7 @@ struct Resclone {
     /**/
 	union {
 		struct ClsDload clsDload;
+		struct Upload clsUpload;
 	};
     /**/
 	struct EnvAndDeps deps;
@@ -199,8 +231,10 @@ TPL_ARRAY(str, char*, 16);
 static void collectResourceIntoMemory( struct Cls595AB944* );
 static void gateleenResclone_download( ClsDload*, ResourceDir*, char*, void(*)(int,void*), void*);
 static void gateleenResclone_download_kontinue( void* );
+static void httpPutEntry_kontinue( int, void* );
 static void pull( void* );
 static void pull_kontinue( int, void* );
+static void readArchive_kontinue( int, void* );
 
 
 static inline struct Resclone* assert_is_Resclone( void*p, char const*f, int l ){
@@ -1244,7 +1278,168 @@ endFn:
 }
 
 
-static ssize_t httpPutEntry( Put*put ){
+static void f7WyuHF2bvoqlU4RT(
+	const char*proto, int proto_len,
+	int rspCode,
+	const char*phrase, int phrase_len,
+	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
+	struct Garbage_HttpClientReq**req,
+	Garbage_Closure cls
+){
+	// TODO cls->httpRspCode = rspCode;
+	if( rspCode != 200 && rspCode != 404 ){
+		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
+		for( int i = 0 ; i < hdrs_cnt ; ++i ){
+			LOGD("< %.*s: %.*s\n", hdrs[i].key_len, hdrs[i].key, hdrs[i].val_len, hdrs[i].val);
+		}
+	}
+}
+
+
+static void fPHXEGzplo6ORfXqF(
+	const char*buf, int buf_len, int flg,
+	struct Garbage_HttpClientReq**req,
+	void*cls_
+){
+	if( flg & 4 ){ /* EOF */
+		struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
+		httpPutEntry_kontinue(0, cls_);
+	}
+}
+
+
+static void ffLJT5IsjD1Oow5PK( int retval, void*cls_ ){
+	assert(!"TODO_WIyp7RBHR6erQutf");
+}
+
+
+static void fbF6TjHxYye01NFq1(
+	void*buf,
+	int buf_len,
+	int flgs,
+	void*cls_
+){
+	struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
+	assert(buf == cls->buf);
+	cls->readFlgs = flgs;
+	httpPutEntry_kontinue(buf_len, cls);
+}
+
+
+static void fmN0tlcnbkXpujQD5( int err, void*buf, void*cls_ ){
+	struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
+	assert(buf == cls->buf);
+	httpPutEntry_kontinue(err, cls);
+}
+
+
+static void httpPutEntry_kontinue( int err, void*cls_ ){
+	struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
+	Upload*const upload = container_of(cls, Upload, clsB5D40F60); assert(upload->mAGIC == Upload_mAGIC);
+	#define CORO_STATE (cls->coroState)
+	enum { begin=0, sXIO8Xcsyt2gAInQS, s5D9EhJ0HSWC5rcYp, };
+	switch( CORO_STATE ){case begin:{
+		int rootUrl_len = upload->rootUrl_len;
+		if( upload->rootUrl[rootUrl_len-1] == '/' ){
+			rootUrl_len -= 1;
+		}
+		int url_len = rootUrl_len + cls->name_len;
+		assert(!cls->putUrl);
+		cls->putUrl = Mallocator_realloc(upload->resclone->deps.mallocator,
+			NULL, 0, url_len + 1);
+		if( !cls->putUrl ){ assert(!"TODO_ZMu1YDj8QStR6X5u"); }
+		err = snprintf(cls->putUrl, url_len, "%.*s/%s", rootUrl_len, upload->rootUrl, cls->name);
+		assert(err <= url_len+1);
+		struct Garbage_HttpClientReq_Mentor mentor = {
+			.onRspHdr = f7WyuHF2bvoqlU4RT,
+			.onRspBody = fPHXEGzplo6ORfXqF,
+			.onError = ffLJT5IsjD1Oow5PK,
+		};
+		/* TODO why parse URL over and over again? Why not just store
+		 * 'host', 'port', 'path' in place of 'url' in root structure? */
+		int host_beg, host_len, path_beg;
+		uint_least16_t port;
+		err = parseUrl(cls->putUrl, url_len, &host_beg, &host_len, &port, &path_beg);
+		if( err ) assert(!"TODO_o2xxtfjsE8RroDEk");
+		char contentLenStr[16];
+		err = snprintf(contentLenStr, sizeof contentLenStr, "%ld", cls->nBodyOctets);
+		if( err > (int)sizeof contentLenStr ){ assert(!"TODO_Zppp9NRm1MkSJ5JI"); abort(); }
+		struct Garbage_HttpMsg_Hdr hdrs[] = {
+			{ .key = "Content-Type", .key_len = 12,
+			  .val = "application/json", .val_len = 16, },
+			{ .key = "Content-Length", .key_len = 14,
+			  .val = contentLenStr, .val_len = err, },
+		};
+		char host[128]; snprintf(host, sizeof host, "%.*s", host_len, cls->putUrl + host_beg);
+		assert(!cls->req);
+		/* vvvvv-- TODO unref */
+		cls->req = newHttpsClientReq(&upload->resclone->deps,
+			"PUT", host, port, cls->putUrl + path_beg,
+			hdrs, sizeof hdrs/sizeof*hdrs, &mentor, cls);
+		if( !cls->req ){ assert(!"TODO_KMlMg6RpiVK9tU2e"); }
+		(*cls->req)->resume(cls->req);
+	}getNextBodyChunk:{
+		if( !cls->buf ){
+			cls->buf_cap = 128*1024*1024;
+			cls->buf = Mallocator_realloc(upload->resclone->deps.mallocator,
+				NULL, 0, cls->buf_cap); /*TODO free*/
+			if( !cls->buf ){ assert(!"TODO_NLHQdKZhfQPhmMxz"); }
+		}
+		LOGD("[DEBUG] tar.readBody(l=%d)\n", cls->buf_cap);
+		CORO_STATE = sXIO8Xcsyt2gAInQS;
+		(*upload->tar)->readBody(upload->tar, cls->buf, cls->buf_cap, fbF6TjHxYye01NFq1, cls);
+		return;
+	}case sXIO8Xcsyt2gAInQS:{
+		LOGD("[DEBUG] tar.readBody() -> %d\n", err);
+		if( err < 0 ){ assert(!"TODO_VZMZszocaFG2M6nG"); }
+		assert(cls->readFlgs == 0 || cls->readFlgs == 4);
+		if( err > 0 ){
+			assert(err <= cls->buf_cap);
+			CORO_STATE = s5D9EhJ0HSWC5rcYp;
+			LOGD("[DEBUG] req.write(l=%d)\n", err);
+			(*cls->req)->write(cls->req, cls->buf, err, cls->readFlgs, fmN0tlcnbkXpujQD5, cls);
+			return;
+		}
+	}case s5D9EhJ0HSWC5rcYp:{
+		if(!( cls->readFlgs & 4 )){
+			goto getNextBodyChunk;
+		}else{
+			/* request complete. wait until httpclient calls us back with response */
+			return;
+		}
+	}/*endWithErr*/{
+		LOGD("[DEBUG] clsB5D40F60.mAGIC = 0\n");
+		cls->mAGIC = 0;
+		Mallocator_realloc(upload->resclone->deps.mallocator, cls->name, strlen(cls->name)+1, 0);
+		cls->onDone(err, cls->onDoneArg);
+		return;
+	}}
+	LOGD("assert(s != %d) %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_STATE
+}
+
+
+static void httpPutEntry( Upload*upload, char const*name, int name_len, uint_fast64_t nBodyOctets, void(*onDone)(int,void*), void*onDoneArg ){
+	assert(name); assert(name_len >= 0);
+	struct ClsB5D40F60*const cls = &upload->clsB5D40F60;
+	assert(cls->mAGIC == 0);
+	*cls = (struct ClsB5D40F60){
+		.mAGIC = 0xB5D40F60,
+		.name_len = name_len,
+		.nBodyOctets = nBodyOctets,
+		.onDone = onDone,
+		.onDoneArg = onDoneArg,
+	};
+	cls->name = Mallocator_realloc(upload->resclone->deps.mallocator,
+		NULL, 0, name_len+1);
+	memcpy(cls->name, name, name_len);
+	cls->name[name_len] = '\0';
+	httpPutEntry_kontinue(0, cls);
+}
+
+
+#if 0 /* OBSOLETE! */
+static int httpPutEntry( Put*put ){
     ssize_t err;
     Upload *upload = put->upload;
     char *url = NULL;
@@ -1289,58 +1484,77 @@ endFn:
     free(url);
     return err;
 }
+#endif
 
 
-static ssize_t readArchive( Upload*upload ){
-    ssize_t err;
-    //Put *put = NULL;
+static void fm2FnNMu9BBEL9LMg( int err, struct Garbage_TarDecHdr*hdr, void*cls_ ){
+	struct ClsB806037F*const cls = cls_;  assert(cls->mAGIC == 0xB806037F);
+	cls->tarHdr = hdr;
+	readArchive_kontinue(err, cls);
+}
 
-    //upload->srcArchive = archive_read_new();
-    if( ! upload->srcArchive ){
-        assert(upload->srcArchive); err = -1; goto endFn; }
 
-    //const int blockSize = (1<<14);
-    assert(!"TODO_1G0AAIdeAADxFQAA");
-    //err = archive_read_support_format_all(upload->srcArchive)
-    //   || archive_read_open_filename(upload->srcArchive, upload->archiveFile, blockSize)
-    //   ;
-    if( err ){
-        //fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to open src archive (code ", err, "): ",
-        //    curl_easy_strerror(err));
-        err = -1; goto endFn;
-    }
+static void readArchive_kontinue( int err, void*cls_ ){
+	struct ClsB806037F*const cls = cls_;  assert(cls->mAGIC == 0xB806037F);
+	Upload*const upload = container_of(cls, Upload, clsB806037F); assert(upload->mAGIC == Upload_mAGIC);
+	#define CORO_STATE (cls->coroState)
+	enum { begin=0, sG3Oi8pzOqsutt2Fr, stF36OGCqWGZOpdf7, };
+	switch( CORO_STATE ){case begin:{
+		assert(!upload->tar);
+		upload->tar = newTarDec();
+		if( !upload->tar ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); err = -1; goto endWithErr; }
+		if( err ){
+			assert(!err); err = -1; goto endWithErr; }
+	}nextArchiveEntry:{
+		CORO_STATE = sG3Oi8pzOqsutt2Fr;
+		(*upload->tar)->nextHdr(upload->tar, fm2FnNMu9BBEL9LMg, cls);
+		return;
+	}case sG3Oi8pzOqsutt2Fr:{
+		if( err == 0 ){ /*EOF*/ err = 0; goto endWithErr; }
+		if( err != 1 ){ assert(!"TODO_Nzaodq0pZpY3X8yo"); }
+		//int const filetype = cls->tarHdr->filetype;
+		int const isDir = 0/*TODO*/;
+		int const isRegularFile = 1/*TODO*/;
+		/* Ignore dirs because gateleen doesn't know 'dirs' as such. */
+		if( isDir ){ goto nextArchiveEntry; }
+		if( !isRegularFile ){
+			LOGW("[WARN ] Ignore non-regular file '%.*s'\n",
+				cls->tarHdr->path_len, cls->tarHdr->path);
+			goto nextArchiveEntry;
+		}
+		if( upload->resclone->flg & FLG_printPath ){
+			LOGI("%.*s\n", cls->tarHdr->path_len, cls->tarHdr->path);
+		}
+		CORO_STATE = stF36OGCqWGZOpdf7;
+		httpPutEntry(upload, cls->tarHdr->path, cls->tarHdr->path_len, cls->tarHdr->nBodyOctets,
+			readArchive_kontinue, cls);
+		return;
+	}case stF36OGCqWGZOpdf7:{
+		if( err ){ assert(!"TODO_SLbwHnsvLFGxfIiq"); }
+		goto nextArchiveEntry;
+	}endWithErr:{
+		cls->mAGIC = 0;
+		cls->onDone(err, cls->onDoneArg);
+		return;
+	}}
+	LOGD("assert(s != %d)  %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_STATE
+}
 
-    //err = curl_easy_setopt(upload->curl, CURLOPT_UPLOAD, 1L)
-    //   || curl_easy_setopt(upload->curl, CURLOPT_READFUNCTION, onUploadChunkRequested)
-    //    ;
-    if( err ){
-        assert(!err); err = -1; goto endFn; }
-    assert(!"TODO_DlkAAL4rAACHIAAA");
-    //for( struct archive_entry*entry ; archive_read_next_header(upload->srcArchive,&entry) == ARCHIVE_OK ;){
-    //    const char *name = archive_entry_pathname(entry);
-    //    int ftype = archive_entry_filetype(entry);
-    //    if( ftype == AE_IFDIR ){
-    //        continue; // Ignore dirs because gateleen doesn't know 'dirs' as such.
-    //    }
-    //    if( ftype != AE_IFREG ){
-    //        fprintf(stderr, "%s%s%s\n", "[WARN ] Ignore non-regular file '", name, "'");
-    //        continue;
-    //    }
-    //    //fprintf(stderr, "%s%s%s\n", "[DEBUG] Reading '",name,"'");
-    //    Put _1 = {
-    //        .upload = upload,
-    //        .name = (char*)name
-    //    }; put = &_1;
-    //    err = curl_easy_setopt(upload->curl, CURLOPT_READDATA, put)
-    //        || httpPutEntry(put);
-    //    //curl = upload->curl; // Sync back. TODO: Still needed?
-    //    if( err ){
-    //        assert(!err); err = -1; goto endFn; }
-    //}
 
-    err = 0;
-endFn:
-    return err;
+static inline void readArchive(
+	Upload*upload,
+	void(*onDone)(int,void*),
+	void *onDoneArg
+){
+	struct ClsB806037F*const cls = &upload->clsB806037F;
+	assert(cls->mAGIC == 0);
+	*cls = (struct ClsB806037F){
+		.mAGIC = 0xB806037F,
+		.onDone = onDone,
+		.onDoneArg = onDoneArg,
+	};
+	readArchive_kontinue(0, cls);
 }
 
 
@@ -1391,29 +1605,43 @@ static void pull( void*cls_ ){
 }
 
 
+static void TODO_0JZLJNlg6wR1Fifl( int err, void*cls_ ){ assert(!"TODO_0JZLJNlg6wR1Fifl"); }
+
+
+static void push_kontinue( int err, void*Upload_ ){
+	Upload*const upload = Upload_;  assert(upload->mAGIC == Upload_mAGIC);
+	#define CORO_STATE (upload->coroState_push)
+	enum { begin=0, shfjzaxi4RzTcUx1O, };
+	switch( CORO_STATE ){case begin:{
+		CORO_STATE = shfjzaxi4RzTcUx1O;
+		readArchive(upload, push_kontinue, upload);
+		return;
+	}case shfjzaxi4RzTcUx1O:{
+		err = 0;
+		if( upload->srcArchive ){
+			assert(!"TODO_B2AAAIBdAADcJAAA");
+			//archive_read_free(upload->srcArchive);
+		}
+		if( err ){ LOGW("[WARN ] retval ignored: %d @%s:%d\n", err, __FILE__, __LINE__); }
+		return;
+	}}
+	LOGD("assert(s != %d)  %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
+	#undef CORO_STATE
+}
+
+
 static void push( void*cls_ ){
-    Resclone*const resclone = assert_is_Resclone(cls_);
-    int err;
-    Upload *upload = NULL;
-
-    Upload _1={0}; upload =&_1;
-    upload->resclone = resclone;
-    upload->archiveFile = resclone->file;
-    upload->rootUrl = resclone->url;
-    assert(!"TODO_6mwAAO5BAACYTAAA");
-
-    err = readArchive(upload);
-    if( err ){
-        err = -1; goto endFn; }
-
-    err = 0;
-endFn:
-    if( upload ){
-        assert(!"TODO_B2AAAIBdAADcJAAA");
-        //curl_easy_cleanup(upload->curl);
-        //archive_read_free(upload->srcArchive);
-    }
-    if( err ){ LOGW("[WARN ] retval ignored: %d @%s:%d\n", err, __FILE__, __LINE__); }
+	Resclone*const resclone = assert_is_Resclone(cls_);
+	Upload*const upload = &resclone->clsUpload;
+	assert(upload->mAGIC == 0);
+	*upload = (struct Upload){
+		.mAGIC = Upload_mAGIC,
+		.resclone = resclone, /* TODO remove, bcause container_of is enough */
+		.archiveFile = resclone->file,
+		.rootUrl = resclone->url,
+		.rootUrl_len = strlen(resclone->url),
+	};
+	push_kontinue(0, upload);
 }
 
 
