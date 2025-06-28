@@ -35,6 +35,7 @@ compile:
 compile: build/obj/array/array.o
 compile: build/obj/common/commonbase.o
 compile: build/obj/entrypoint/gateleenResclone.o
+compile: build/obj/glue/archive.o
 compile: build/obj/garb_glue/garb_glue.o
 compile: build/obj/gateleen_resclone/gateleen_resclone.o
 compile: build/obj/mime/mime.o
@@ -55,6 +56,7 @@ build/bin/gateleen-resclone$(BINEXT): build/lib/libGateleenResclone$(LIBSEXT)
 
 build/lib/libGateleenResclone$(LIBSEXT):
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/array/array.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue/archive.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/garb_glue/garb_glue.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/gateleen_resclone/gateleen_resclone.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/mime/mime.o

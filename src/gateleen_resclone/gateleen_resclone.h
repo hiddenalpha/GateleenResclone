@@ -92,7 +92,7 @@ struct Garbage_MemoryArena** newArenaLinkedList( struct EnvAndDeps* );
 struct Garbage_TarEnc** newTarEnc( struct EnvAndDeps*, void(*)(void*,const char*,int,int,void(*)(int,void*),void*), void*);
 
 
-struct Garbage_TarDec** newTarDec( void );
+struct Garbage_TarDec** newTarDec( struct EnvAndDeps*, char const*archivePath );
 
 
 char const*strerrname(int);

@@ -1309,6 +1309,7 @@ static void fPHXEGzplo6ORfXqF(
 
 
 static void ffLJT5IsjD1Oow5PK( int retval, void*cls_ ){
+	LOGD("[DEBUG] http.onError(%s)\n", strerrname(-retval));
 	assert(!"TODO_WIyp7RBHR6erQutf");
 }
 
@@ -1337,7 +1338,7 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 	struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
 	Upload*const upload = container_of(cls, Upload, clsB5D40F60); assert(upload->mAGIC == Upload_mAGIC);
 	#define CORO_STATE (cls->coroState)
-	enum { begin=0, sXIO8Xcsyt2gAInQS, s5D9EhJ0HSWC5rcYp, };
+	enum { begin=0, sXIO8Xcsyt2gAInQS, s5D9EhJ0HSWC5rcYp, sELzjNenIaxsHsqGG, };
 	switch( CORO_STATE ){case begin:{
 		int rootUrl_len = upload->rootUrl_len;
 		if( upload->rootUrl[rootUrl_len-1] == '/' ){
@@ -1404,11 +1405,15 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 		if(!( cls->readFlgs & 4 )){
 			goto getNextBodyChunk;
 		}else{
-			/* request complete. wait until httpclient calls us back with response */
+			//LOGD("request complete. wait until httpclient calls us back with response\n");
+			CORO_STATE = sELzjNenIaxsHsqGG;
 			return;
 		}
+	}case sELzjNenIaxsHsqGG:{
+		/* this request is complete now */
+		err = 0;
+		/*fall*/
 	}/*endWithErr*/{
-		LOGD("[DEBUG] clsB5D40F60.mAGIC = 0\n");
 		cls->mAGIC = 0;
 		Mallocator_realloc(upload->resclone->deps.mallocator, cls->name, strlen(cls->name)+1, 0);
 		cls->onDone(err, cls->onDoneArg);
@@ -1438,55 +1443,6 @@ static void httpPutEntry( Upload*upload, char const*name, int name_len, uint_fas
 }
 
 
-#if 0 /* OBSOLETE! */
-static int httpPutEntry( Put*put ){
-    ssize_t err;
-    Upload *upload = put->upload;
-    char *url = NULL;
-    // TODO struct curl_slist *reqHdrs = NULL;
-
-    int rootUrl_len = strlen(upload->rootUrl);
-    if( upload->rootUrl[rootUrl_len-1]=='/' ){
-        rootUrl_len -= 1;
-    }
-    int url_len = strlen(upload->rootUrl) + strlen(put->name);
-    url = malloc(url_len +2);
-    if( url == NULL ){
-        err = -ENOMEM; goto endFn; }
-    sprintf(url, "%.*s/%s", rootUrl_len,upload->rootUrl, put->name);
-    assert(!"TODO_chIAAHobAABdMwAA");
-    //err =  CURLE_OK != curl_easy_setopt(upload->curl, CURLOPT_URL, url)
-    //    || addContentTypeHeader(put, reqHdrs)
-    //    ;
-    if( err ){
-        assert(!err); err = -1; goto endFn; }
-
-    fprintf(stderr, "%s%s%s\n", "[INFO ] Upload '", url, "'");
-    assert(!"TODO_ZWQAABNAACIZAAAR");
-    //err = curl_easy_perform(upload->curl);
-    //if( err != CURLE_OK ){
-    //    fprintf(stderr, "%s%s%s"FMT_SIZE_T"%s%s\n",
-    //        "[ERROR] PUT '", url, "' (code ", err, "): ", curl_easy_strerror(err));
-    //    err = -1; goto endFn;
-    //}
-    long rspCode;
-    //curl_easy_getinfo(upload->curl, CURLINFO_RESPONSE_CODE, &rspCode);
-    if( rspCode <= 199 || rspCode >= 300 ){
-        fprintf(stderr, "%s%ld%s%s%s\n",
-            "[WARN ] Got RspCode ", rspCode, " for 'PUT ", url, "'");
-    }else{
-        //fprintf(stderr, "%s%ld%s%s%s\n", "[DEBUG] Got RspCode ", rspCode, " for 'PUT ", url, "'");
-    }
-
-    err = 0;
-endFn:
-    // TODO curl_slist_free_all(reqHdrs);
-    free(url);
-    return err;
-}
-#endif
-
-
 static void fm2FnNMu9BBEL9LMg( int err, struct Garbage_TarDecHdr*hdr, void*cls_ ){
 	struct ClsB806037F*const cls = cls_;  assert(cls->mAGIC == 0xB806037F);
 	cls->tarHdr = hdr;
@@ -1500,8 +1456,9 @@ static void readArchive_kontinue( int err, void*cls_ ){
 	#define CORO_STATE (cls->coroState)
 	enum { begin=0, sG3Oi8pzOqsutt2Fr, stF36OGCqWGZOpdf7, };
 	switch( CORO_STATE ){case begin:{
+		Resclone*const resclone = assert_is_Resclone(upload->resclone);
 		assert(!upload->tar);
-		upload->tar = newTarDec();
+		upload->tar = newTarDec(&resclone->deps, resclone->file);
 		if( !upload->tar ){ LOGT("\t@ %s:%d\n", __FILE__, __LINE__); err = -1; goto endWithErr; }
 		if( err ){
 			assert(!err); err = -1; goto endWithErr; }
@@ -1617,12 +1574,11 @@ static void push_kontinue( int err, void*Upload_ ){
 		readArchive(upload, push_kontinue, upload);
 		return;
 	}case shfjzaxi4RzTcUx1O:{
-		err = 0;
 		if( upload->srcArchive ){
 			assert(!"TODO_B2AAAIBdAADcJAAA");
 			//archive_read_free(upload->srcArchive);
 		}
-		if( err ){ LOGW("[WARN ] retval ignored: %d @%s:%d\n", err, __FILE__, __LINE__); }
+		if( err ){ upload->resclone->exitCode = err; }
 		return;
 	}}
 	LOGD("assert(s != %d)  %s:%d\n", CORO_STATE, __FILE__, __LINE__); abort();
