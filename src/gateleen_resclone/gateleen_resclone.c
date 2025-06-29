@@ -709,7 +709,7 @@ static void onTarOutChunk(
 	}
 	err = fwrite(buf, 1, buf_len, dload->tarFile);
 	if( err != buf_len ){ err = -errno;
-		LOGE("%s\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+		LOGE("%s:\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
 		dload->resclone->exitCode = 1;
 		return;
 	}
@@ -742,7 +742,7 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 		(*dload->tar)->nextEntry(dload->tar, &tarHdr, copyBufToArchive_kontinue, cls);
 		return;
 	}case sE2iEFO6D7uNJ2A85:{
-		if( err < 0 ) LOGW("%s: TODO_cp6WZH15OGqJtPwt\n\t@ %s:%d\n",
+		if( err < 0 ) LOGW("%s: TODO_vnbvTTOLx5A3g9uf\n\t@ %s:%d\n",
 			strerrname(-err), __FILE__, __LINE__);
 		if( resourceFile->buf_len > 0 ){
 			CORO_STATE = sX7Vo8fJSSxJAJtHp;
@@ -858,6 +858,7 @@ static void onDloadPushIoTask( void(*task)(void*arg), void*arg, void*cls_ ){
 static void onDloadError( int retval, void*cls_ ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	LOGW("%s:\n\t@ %s:%d\n", strerrname(-retval), __FILE__, __LINE__);
+	__asm__("int $3;nop;");/*TODO*/
 	resourceDir->eno = retval;
 	assert(*resourceDir->dload->req);
 	assert((*resourceDir->dload->req)->pause);
@@ -899,7 +900,7 @@ static void iterateNextResourceFile( int err, void*cls_ ){
 		if( err < 0 ){ /* ERROR */
 			goto endWithErr;
 		}else if( err == 0 ){ /* REJECT */
-			LOGI("[INFO ] Skip     '%s%.*s'  (filtered)\n", dload->url, name_len , name);
+			//LOGI("[INFO ] Skip     '%s%.*s'  (filtered)\n", dload->url, name_len , name);
 			err = -10000-__LINE__;
 			LOGD("TODO: choose better errno(%d)\n\t@ %s:%d \n", err, __FILE__, __LINE__);
 			goto endWithErr;
@@ -957,19 +958,20 @@ static void onRspJsonParsed( void*cls_, int err, void*json_ ){
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	if( err ){
 		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
-		LOGW("%s: Failed to parse response JSON\n", strerrname(-err));
+		LOGW("%s: Failed to parse response JSON\n\t@ %s:%d\n",
+			strerrname(-err), __FILE__, __LINE__);
 		goto endFn;
 	}
 	struct Garbage_JsonTreeParser_JsonNode const*const rootNode = json_;
 	struct Garbage_JsonTreeParser_JsonNode const*json = rootNode;
 	assert(json->type == '{');
 	if( json->childs_len != 1 ){
-		LOGW("[ERROR] JSON root expected ONE child but got %d\n", json->childs_len);
+		LOGW("EINVAL: JSON root expected ONE child but got %d\n", json->childs_len);
 		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
 		goto endFn;
 	}
 	if( json->childs[0]->type != '[' ){
-		LOGE("[ERROR] json['%.*s'] expected to be an array. But is not.\n",
+		LOGE("EINVAL: json['%.*s'] expected to be an array. But is not.\n",
 			json->childs[0]->key_len, json->childs[0]->key);
 		resourceDir->httpRspCode = ERR_PARSE_DIR_LIST;
 		goto endFn;
@@ -983,7 +985,7 @@ static void onRspJsonParsed( void*cls_, int err, void*json_ ){
 	resourceDir->childNames = Mallocator_realloc(
 		resourceDir->dload->resclone->deps.mallocator, NULL, 0, totalBufLen);
 	if( !resourceDir->childNames ){ assert(errno > 0); err = -errno;
-		LOGD("%s @ %s:%d", strerror(-err), __FILE__, __LINE__);
+		LOGD("%s:\n\t@ %s:%d", strerror(-err), __FILE__, __LINE__);
 		resourceDir->eno = -errno; goto endFn;
 	}
 	char **nxtPtr = resourceDir->childNames;
@@ -1020,7 +1022,7 @@ static void onDloadRspBody(
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	if( resourceDir->httpRspCode != 200 ){ return; }
 	if( buf_len < 0 ){ /* error */
-		LOGD("TODO: %d  %s:%d\n", buf_len, __FILE__, __LINE__); abort();
+		LOGD("TODO: %d\n\t@ %s:%d\n", buf_len, __FILE__, __LINE__); abort();
 		return;
 	}
 	if( !resourceDir->jsonParser ){
@@ -1097,7 +1099,6 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
 		FN_HttpClientReq_closeSnk(dload->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;
-		FN_HttpClientReq_resume(dload->req);
 		return;
 	}case sywgOcZGKrgTP3onF:{
 		if( resourceDir->httpRspCode == ERR_PARSE_DIR_LIST ){
@@ -1344,18 +1345,13 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 		if( upload->rootUrl[rootUrl_len-1] == '/' ){
 			rootUrl_len -= 1;
 		}
-		int url_len = rootUrl_len + cls->name_len;
+		int url_len = rootUrl_len +sizeof("/")-1 + cls->name_len;
 		assert(!cls->putUrl);
 		cls->putUrl = Mallocator_realloc(upload->resclone->deps.mallocator,
 			NULL, 0, url_len + 1);
 		if( !cls->putUrl ){ assert(!"TODO_ZMu1YDj8QStR6X5u"); }
-		err = snprintf(cls->putUrl, url_len, "%.*s/%s", rootUrl_len, upload->rootUrl, cls->name);
+		err = snprintf(cls->putUrl, url_len+1, "%.*s/%s", rootUrl_len, upload->rootUrl, cls->name);
 		assert(err <= url_len+1);
-		struct Garbage_HttpClientReq_Mentor mentor = {
-			.onRspHdr = f7WyuHF2bvoqlU4RT,
-			.onRspBody = fPHXEGzplo6ORfXqF,
-			.onError = ffLJT5IsjD1Oow5PK,
-		};
 		/* TODO why parse URL over and over again? Why not just store
 		 * 'host', 'port', 'path' in place of 'url' in root structure? */
 		int host_beg, host_len, path_beg;
@@ -1372,13 +1368,18 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 			  .val = contentLenStr, .val_len = err, },
 		};
 		char host[128]; snprintf(host, sizeof host, "%.*s", host_len, cls->putUrl + host_beg);
+		struct Garbage_HttpClientReq_Mentor mentor = {
+			.onRspHdr = f7WyuHF2bvoqlU4RT,
+			.onRspBody = fPHXEGzplo6ORfXqF,
+			.onError = ffLJT5IsjD1Oow5PK,
+		};
 		assert(!cls->req);
 		/* vvvvv-- TODO unref */
 		cls->req = newHttpsClientReq(&upload->resclone->deps,
 			"PUT", host, port, cls->putUrl + path_beg,
 			hdrs, sizeof hdrs/sizeof*hdrs, &mentor, cls);
 		if( !cls->req ){ assert(!"TODO_KMlMg6RpiVK9tU2e"); }
-		(*cls->req)->resume(cls->req);
+		//(*cls->req)->resume(cls->req);
 	}getNextBodyChunk:{
 		if( !cls->buf ){
 			cls->buf_cap = 128*1024*1024;
@@ -1386,18 +1387,15 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 				NULL, 0, cls->buf_cap); /*TODO free*/
 			if( !cls->buf ){ assert(!"TODO_NLHQdKZhfQPhmMxz"); }
 		}
-		LOGD("[DEBUG] tar.readBody(l=%d)\n", cls->buf_cap);
 		CORO_STATE = sXIO8Xcsyt2gAInQS;
 		(*upload->tar)->readBody(upload->tar, cls->buf, cls->buf_cap, fbF6TjHxYye01NFq1, cls);
 		return;
 	}case sXIO8Xcsyt2gAInQS:{
-		LOGD("[DEBUG] tar.readBody() -> %d\n", err);
 		if( err < 0 ){ assert(!"TODO_VZMZszocaFG2M6nG"); }
 		assert(cls->readFlgs == 0 || cls->readFlgs == 4);
-		if( err > 0 ){
+		if( err > 0 || cls->readFlgs & 4 ){
 			assert(err <= cls->buf_cap);
 			CORO_STATE = s5D9EhJ0HSWC5rcYp;
-			LOGD("[DEBUG] req.write(l=%d)\n", err);
 			(*cls->req)->write(cls->req, cls->buf, err, cls->readFlgs, fmN0tlcnbkXpujQD5, cls);
 			return;
 		}
@@ -1470,12 +1468,12 @@ static void readArchive_kontinue( int err, void*cls_ ){
 		if( err == 0 ){ /*EOF*/ err = 0; goto endWithErr; }
 		if( err != 1 ){ assert(!"TODO_Nzaodq0pZpY3X8yo"); }
 		//int const filetype = cls->tarHdr->filetype;
-		int const isDir = 0/*TODO*/;
-		int const isRegularFile = 1/*TODO*/;
+		int const isDir = (cls->tarHdr->filetype == 'd');
+		int const isRegularFile = (cls->tarHdr->filetype == '0' || cls->tarHdr->filetype == '\0');
 		/* Ignore dirs because gateleen doesn't know 'dirs' as such. */
 		if( isDir ){ goto nextArchiveEntry; }
 		if( !isRegularFile ){
-			LOGW("[WARN ] Ignore non-regular file '%.*s'\n",
+			LOGW("WARN: Ignore non-regular file '%.*s'\n",
 				cls->tarHdr->path_len, cls->tarHdr->path);
 			goto nextArchiveEntry;
 		}

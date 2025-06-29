@@ -111,7 +111,8 @@ newTarDec( struct EnvAndDeps*deps, char const*archivePath )
 	   || archive_read_open_filename(this->archive, archivePath, 1<<14)
 	   ;
 	if( err ){
-		LOGE("libarchive: %s\n\t@ %s:%d\n", err, curl_easy_strerror(err), __FILE__, __LINE__);
+		LOGE("libarchive: %d: %s\n\t@ %s:%d\n", err, archive_error_string(this->archive),
+			__FILE__, __LINE__);
 		err = -1; goto endFn;
 	}
 
