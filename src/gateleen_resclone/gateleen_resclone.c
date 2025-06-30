@@ -1374,17 +1374,16 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 			.onError = ffLJT5IsjD1Oow5PK,
 		};
 		assert(!cls->req);
-		/* vvvvv-- TODO unref */
 		cls->req = newHttpsClientReq(&upload->resclone->deps,
 			"PUT", host, port, cls->putUrl + path_beg,
 			hdrs, sizeof hdrs/sizeof*hdrs, &mentor, cls);
 		if( !cls->req ){ assert(!"TODO_KMlMg6RpiVK9tU2e"); }
-		//(*cls->req)->resume(cls->req);
+		/*FALL*/
 	}getNextBodyChunk:{
 		if( !cls->buf ){
 			cls->buf_cap = 128*1024*1024;
 			cls->buf = Mallocator_realloc(upload->resclone->deps.mallocator,
-				NULL, 0, cls->buf_cap); /*TODO free*/
+				NULL, 0, cls->buf_cap);
 			if( !cls->buf ){ assert(!"TODO_NLHQdKZhfQPhmMxz"); }
 		}
 		CORO_STATE = sXIO8Xcsyt2gAInQS;
@@ -1399,6 +1398,7 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 			(*cls->req)->write(cls->req, cls->buf, err, cls->readFlgs, fmN0tlcnbkXpujQD5, cls);
 			return;
 		}
+		/*FALL*/
 	}case s5D9EhJ0HSWC5rcYp:{
 		if(!( cls->readFlgs & 4 )){
 			goto getNextBodyChunk;
@@ -1413,6 +1413,10 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 		/*fall*/
 	}/*endWithErr*/{
 		cls->mAGIC = 0;
+		(*cls->req)->unref(cls->req);
+		assert(cls->buf);
+		Mallocator_realloc(upload->resclone->deps.mallocator, cls->buf, cls->buf_cap, 0);
+		assert(cls->name);
 		Mallocator_realloc(upload->resclone->deps.mallocator, cls->name, strlen(cls->name)+1, 0);
 		cls->onDone(err, cls->onDoneArg);
 		return;

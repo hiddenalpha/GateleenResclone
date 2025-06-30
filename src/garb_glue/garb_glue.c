@@ -110,16 +110,16 @@ struct Garbage_JsonTreeParser** newJsonTreeParser(
 }
 
 
-struct Garbage_TarEnc** newTarEnc(
-	EnvAndDeps*deps,
-	void (*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*),
-	void*cls
-){
-	return Garbage_newTarEnc(&(struct Garbage_newTarEncOpts){
-		.mallocator = deps->mallocator,
-		.onChunk = onChunk,
-		.cls = cls,
-	});
-}
+//struct Garbage_TarEnc** newTarEnc(
+//	EnvAndDeps*deps,
+//	void (*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*),
+//	void*cls
+//){
+//	return Garbage_newTarEnc(&(struct Garbage_newTarEncOpts){
+//		.mallocator = deps->mallocator,
+//		.onChunk = onChunk,
+//		.cls = cls,
+//	});
+//}
 
 
