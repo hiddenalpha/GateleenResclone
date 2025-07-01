@@ -25,6 +25,13 @@
 #define container_of(P, T, M) \
      ((T*)( ((size_t)P) - ((size_t)((ptrdiff_t)&((T*)0)->M - (ptrdiff_t)0) )))
 
+/* TODO fix this shit */
+#if _WIN32
+#	define FALL __attribute__ ((fallthrough)) /* for fucking annoying compilers */
+#else
+#	define FALL do{}while(0)
+#endif
+
 #define Mallocator_realloc(A, B, C, D) (*A)->reallocBlocking(A, B, C, D)
 #define FN_ThreadPool_enque(A, B, C) (*A)->enque(A, B, C)
 #define FN_HttpClientReq_closeSnk(A) (*A)->closeSnk(A)
@@ -50,7 +57,7 @@ struct EnvAndDeps {
 	struct Garbage_Env **env;
 	struct Garbage_Mallocator **mallocator;
 	struct Garbage_MemoryArena **mainArena;
-	struct Garbage_SocketMgr **socketMgrTls;
+	struct Garbage_SocketMgr **socketMgr;
 	struct Garbage_IoMultiplexer **ioMultiplexer;
 	struct Garbage_ThreadPool **ioWorker;
 	struct Garbage_Networker **networker;
@@ -67,11 +74,12 @@ gateleenResclone_run( int argc , char**argv );
 int initEnv( struct EnvAndDeps*, void*, int );
 
 
-struct Garbage_HttpClientReq** newHttpsClientReq(
+struct Garbage_HttpClientReq** newHttpClientReq(
     struct EnvAndDeps*,
     char const*mthd,
     char const*host,
     uint_least16_t port,
+    int useTls,
     char const*url,
     struct Garbage_HttpMsg_Hdr*,
     int hdrs_cnt,

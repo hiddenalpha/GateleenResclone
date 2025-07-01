@@ -31,7 +31,7 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
     });
     assert(deps->env);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
     assert(deps->ioWorker);
-    deps->socketMgrTls = Garbage_newSocketMgr(deps->env, &(struct Garbage_SocketMgr_Opts){
+    deps->socketMgr = Garbage_newSocketMgr(deps->env, &(struct Garbage_SocketMgr_Opts){
         .mallocator = deps->mallocator,
         .ioMultiplexer = deps->ioMultiplexer,
         .blockingIoWorker = deps->ioWorker,
@@ -42,7 +42,7 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
         .ioWorker = deps->ioWorker,
     });
 	/**/
-	assert(deps->socketMgrTls);
+	assert(deps->socketMgr);
 	assert(deps->ioWorker);
 	assert(deps->networker);
 	/**/
@@ -63,22 +63,51 @@ struct Garbage_MemoryArena** newArenaLinkedList( EnvAndDeps*deps ){
 }
 
 
-struct Garbage_HttpClientReq** newHttpsClientReq(
+struct Garbage_HttpClientReq** newHttpClientReq(
     EnvAndDeps*deps,
     char const*mthd,
     char const*host,
     uint_least16_t port,
+    int useTls,
     char const*url,
     struct Garbage_HttpMsg_Hdr *hdrs,
     int hdrs_cnt,
     struct Garbage_HttpClientReq_Mentor*mentor,
     void*mentorCls
 ){
+	static struct Garbage_TlsClient_Mentor socketMgrTlsMentor = {
+#if 0
+	void (*pushIoTask)( void(*task)(Garbage_Closure arg), Garbage_Closure arg, Garbage_Closure cls );
+	void (*sockAcquire)( void*sockaddr, int sockaddr_len, Garbage_Closure cls, void(*)(int retval, Garbage_Closure sock, Garbage_Closure arg), Garbage_Closure arg );
+	void (*sockRelease)( Garbage_Closure sock, int mustClose, Garbage_Closure cls );
+	void (*sockSend)( Garbage_Closure sock, const void*buf, int buf_len, Garbage_Closure cls, void(*onDone)(int retval, Garbage_Closure arg), Garbage_Closure arg );
+	void (*sockFlush)( Garbage_Closure sock, Garbage_Closure cls, void(*onDone)(int,Garbage_Closure arg), Garbage_Closure arg );
+	void (*sockRecv)( Garbage_Closure sock, void*buf, int buf_len, Garbage_Closure cls, void(*onDone)(int,Garbage_Closure arg), Garbage_Closure arg );
+	void (*onError)( int eno, Garbage_Closure cls );
+#endif
+	};
+	/* TODO: WARN we're abusing static here */
+	socketMgrTlsMentor.onError = mentor->onError;
+	/* TODO: WARN fix this memory-leak! */
+	struct Garbage_TlsClient **tlsClient = NULL;
+	if( useTls ){
+		tlsClient = Garbage_newTlsClient(
+			deps->env, &socketMgrTlsMentor, NULL,
+			&(struct Garbage_TlsClient_Opts){
+				.peerHostname = host,
+				.mallocator = deps->mallocator,
+				.socketMgr = deps->socketMgr,
+				.ioWorker = deps->ioWorker,
+			}
+		);
+	}
     return Garbage_newHttpClientReq(
         deps->env, mentor, mentorCls,
         &(struct Garbage_HttpClientReq_Opts){
             .mallocator = deps->mallocator,
-            .socketMgr = deps->socketMgrTls,
+            .socketMgr = (useTls)
+				? (*tlsClient)->asSocketMgr(tlsClient)
+				: deps->socketMgr,
             .ioWorker = deps->ioWorker,
             .networker = deps->networker,
             .mthd = mthd,
