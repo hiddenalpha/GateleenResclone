@@ -211,7 +211,7 @@ static void
 fazUoq6l4CA1YQBUo( void*cls_ ){
 	struct ClsC04C3362*const cls = cls_;  assert(cls->mAGIC == 0xC04C3362);
 	cls->err = archive_write_header(cls->this->archive, cls->this->entry);
-	(*cls->this->env)->enqueBlocking(cls->this->env, fF0H4lmzEVJgxuvFv, cls);
+	(*cls->this->env)->enque(cls->this->env, fF0H4lmzEVJgxuvFv, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
 static void
@@ -254,7 +254,7 @@ static void
 fVIW2DcjiyVzh2FpT( void*cls_ ){
 	struct Cls476A9D42*const cls = cls_; assert(cls->mAGIC == 0x476A9D42);
 	cls->err = archive_write_data(cls->this->archive, cls->buf, cls->buf_len);
-	(*cls->this->env)->enqueBlocking(cls->this->env, f6Oyecu5X8O7rT879, cls);
+	(*cls->this->env)->enque(cls->this->env, f6Oyecu5X8O7rT879, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
 static void
@@ -291,7 +291,7 @@ static void
 fqRmD2uoLc5rOoCY1( void*cls_ ){
 	struct Cls50735D7E*const cls = cls_; assert(cls->mAGIC == 0x50735D7E);
 	cls->err = archive_write_close(cls->this->archive);
-	(*cls->this->env)->enqueBlocking(cls->this->env, fHFTMFjhZkOmtQoAq, cls);
+	(*cls->this->env)->enque(cls->this->env, fHFTMFjhZkOmtQoAq, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
 static void

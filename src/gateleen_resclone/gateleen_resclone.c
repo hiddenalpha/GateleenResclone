@@ -67,6 +67,7 @@ struct ClsB5D40F60/* httpPutEntry */{
 	unsigned mAGIC;
 	int coroState;
 	char *name;  int name_len;
+	char *path;  int path_len;
 	uint_least64_t nBodyOctets;
 	struct Garbage_HttpClientReq **req;
 	int readFlgs;
@@ -170,7 +171,6 @@ struct Upload {
 	unsigned mAGIC;
 	int coroState_push;
     struct Resclone *resclone;
-    char *rootUrl;  int rootUrl_len;
     char *archiveFile;
     struct archive *srcArchive;
 	Put *put; /* TODO unused? */
@@ -646,7 +646,6 @@ static void onResourceFileError( int retval, void*cls_ ){
 
 static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 	assert(cls->mAGIC == 0x595AB944);
-	int err;
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
 	ResourceDir*const resourceDir = assert_is_ResourceDir(resourceFile->resourceDir);
 	Resclone*const resclone = resourceDir->dload->resclone;
@@ -1346,44 +1345,43 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 	#define CORO_STATE (cls->coroState)
 	enum { begin=0, sXIO8Xcsyt2gAInQS, s5D9EhJ0HSWC5rcYp, sELzjNenIaxsHsqGG, };
 	switch( CORO_STATE ){case begin:{
-		int rootUrl_len = upload->rootUrl_len;
-		if( upload->rootUrl[rootUrl_len-1] == '/' ){
-			rootUrl_len -= 1;
+		Resclone*const resclone = upload->resclone;
+		assert(!cls->path);
+		cls->path_len = resclone->path_len +(sizeof"/"-1) + cls->name_len;
+		cls->path = Mallocator_realloc(resclone->deps.mallocator,
+			NULL, 0, cls->path_len + 1);
+		if( !cls->path ){ assert(!"TODO_EZ6bgYM5YzxtSzbE"); }
+		char *name = cls->name;
+		int name_len = cls->name_len;
+		while( name[0] == '/' || (name[0] == '.' && name[1] == '/') ){
+			assert(name_len > 0);
+			name += 1;
+			name_len -= 1;
 		}
-		int url_len = rootUrl_len +sizeof("/")-1 + cls->name_len;
-		assert(!cls->putUrl);
-		cls->putUrl = Mallocator_realloc(upload->resclone->deps.mallocator,
-			NULL, 0, url_len + 1);
-		if( !cls->putUrl ){ assert(!"TODO_ZMu1YDj8QStR6X5u"); }
-		err = snprintf(cls->putUrl, url_len+1, "%.*s/%s", rootUrl_len, upload->rootUrl, cls->name);
-		assert(err <= url_len+1);
-		/* TODO why parse URL over and over again? Why not just store
-		 * 'host', 'port', 'path' in place of 'url' in root structure? */
-		int host_beg, host_len, path_beg;
-		uint_least16_t port;
-		err = parseUrl(cls->putUrl, url_len, &host_beg, &host_len, &port, &path_beg);
-		if( err ) assert(!"TODO_o2xxtfjsE8RroDEk");
+		err = snprintf(cls->path, cls->path_len+1, "%.*s/%.*s",
+			resclone->path_len, resclone->path,
+			cls->name_len, cls->name);
+		assert(err <= cls->path_len+1);
 		char contentLenStr[16];
-		err = snprintf(contentLenStr, sizeof contentLenStr, "%ld", cls->nBodyOctets);
-		if( err > (int)sizeof contentLenStr ){ assert(!"TODO_Zppp9NRm1MkSJ5JI"); abort(); }
+		err = snprintf(contentLenStr, sizeof contentLenStr, "%llu",
+			(long long unsigned)cls->nBodyOctets);
+		if( err > (int)sizeof contentLenStr ){ assert(!"TODO_mAaGCDaGtz3m46Z7"); abort(); }
 		struct Garbage_HttpMsg_Hdr hdrs[] = {
 			{ .key = "Content-Type", .key_len = 12,
 			  .val = "application/json", .val_len = 16, },
 			{ .key = "Content-Length", .key_len = 14,
 			  .val = contentLenStr, .val_len = err, },
 		};
-		char host[128]; snprintf(host, sizeof host, "%.*s", host_len, cls->putUrl + host_beg);
-		struct Garbage_HttpClientReq_Mentor mentor = {
+		static struct Garbage_HttpClientReq_Mentor mentor = {
 			.onRspHdr = f7WyuHF2bvoqlU4RT,
 			.onRspBody = fPHXEGzplo6ORfXqF,
 			.onError = ffLJT5IsjD1Oow5PK,
 		};
 		assert(!cls->req);
-		cls->req = newHttpsClientReq(&upload->resclone->deps,
-			"PUT", host, port, cls->putUrl + path_beg,
+		cls->req = newHttpClientReq(&upload->resclone->deps,
+			"PUT", resclone->host, resclone->port, (resclone->flg & FLG_isTls), cls->path,
 			hdrs, sizeof hdrs/sizeof*hdrs, &mentor, cls);
-		if( !cls->req ){ assert(!"TODO_KMlMg6RpiVK9tU2e"); }
-		/*FALL*/
+		if( !cls->req ){ assert(!"TODO_HU3Q1feXqU38jY8e"); }
 	}getNextBodyChunk:{
 		if( !cls->buf ){
 			cls->buf_cap = 128*1024*1024;
@@ -1395,7 +1393,7 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 		(*upload->tar)->readBody(upload->tar, cls->buf, cls->buf_cap, fbF6TjHxYye01NFq1, cls);
 		return;
 	}case sXIO8Xcsyt2gAInQS:{
-		if( err < 0 ){ assert(!"TODO_VZMZszocaFG2M6nG"); }
+		if( err < 0 ){ assert(!"TODO_7trvuvsCBrQwhpoC"); }
 		assert(cls->readFlgs == 0 || cls->readFlgs == 4);
 		if( err > 0 || cls->readFlgs & 4 ){
 			assert(err <= cls->buf_cap);
@@ -1403,7 +1401,7 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 			(*cls->req)->write(cls->req, cls->buf, err, cls->readFlgs, fmN0tlcnbkXpujQD5, cls);
 			return;
 		}
-		/*FALL*/
+		FALL;
 	}case s5D9EhJ0HSWC5rcYp:{
 		if(!( cls->readFlgs & 4 )){
 			goto getNextBodyChunk;
@@ -1415,7 +1413,6 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 	}case sELzjNenIaxsHsqGG:{
 		/* this request is complete now */
 		err = 0;
-		/*fall*/
 	}/*endWithErr*/{
 		cls->mAGIC = 0;
 		(*cls->req)->unref(cls->req);
@@ -1423,6 +1420,8 @@ static void httpPutEntry_kontinue( int err, void*cls_ ){
 		Mallocator_realloc(upload->resclone->deps.mallocator, cls->buf, cls->buf_cap, 0);
 		assert(cls->name);
 		Mallocator_realloc(upload->resclone->deps.mallocator, cls->name, strlen(cls->name)+1, 0);
+		assert(cls->path);
+		Mallocator_realloc(upload->resclone->deps.mallocator, cls->path, cls->path_len+1, 0);
 		cls->onDone(err, cls->onDoneArg);
 		return;
 	}}
@@ -1632,6 +1631,13 @@ static void fvr4Ls8sH4112Kypd( void*cls_ ){
 	resclone->host_len = host_len;
 	resclone->path_len = path_len;
 	resclone->port = port;
+	while( resclone->path[resclone->path_len-1] == '/' ){
+		assert(resclone->path_len > 0);
+		resclone->path_len -= 1;
+	}
+
+	assert(resclone->path[0] == '/');
+	assert(resclone->path[resclone->path_len-1] != '/');
 
 	resclone->argc = 0;
 	resclone->argv = NULL;

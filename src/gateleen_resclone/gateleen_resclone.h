@@ -38,7 +38,7 @@
 #define FN_HttpClientReq_write(A, B, C, D, E) (*A)->closeSnk(A, B, C, D, E)
 #define FN_HttpClientReq_pause(A) (*A)->pause(A)
 #define FN_HttpClientReq_resume(A) (*A)->resume(A)
-#define FN_Env_enque(A, B, C) (*A)->enqueBlocking(A, B, C)
+#define FN_Env_enque(A, B, C) (*A)->enque(A, B, C)
 #define FN_Env_runUntilDone(A) (*A)->runUntilDone(A)
 #define FN_JsonTreeParser_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
 #define FN_TarEnc_nextEntry(A, B) (*A)->nextEntry(A, B)
