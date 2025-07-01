@@ -124,7 +124,7 @@ struct ResourceDir {
 	int state_gateleenResclone_download;
     struct ClsDload *dload;
     struct ResourceDir *parentDir;
-	char *path;  int path_len;
+	char *path;  int path_len, path_cap;
 	short httpRspCode;
     char *rspBody;
     size_t rspBody_len;
@@ -665,9 +665,8 @@ static void collectResourceIntoMemory( struct Cls595AB944*cls ){
 		req = newHttpClientReq(&resclone->deps, "GET", resclone->host, resclone->port,
 			(resclone->flg & FLG_isTls), resclone->path, NULL, 0, &reqMentor, cls);
 		if( !req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
-		FN_HttpClientReq_closeSnk(req);
 		CORO_STATE = sgDMgDx6HnAdNWWis;
-		FN_HttpClientReq_resume(req);
+		FN_HttpClientReq_closeSnk(req);
 		return;
 	}case sgDMgDx6HnAdNWWis:{
 		if( cls->eno ){
@@ -734,7 +733,9 @@ static void copyBufToArchive_kontinue( int err, void*cls_ ){
 			assert(dload->tar && "TODO_ZHqUG7mMYW5ySOdp");
 		}
 		char *fileName = resourceFile->path + resclone->path_len;
-		int const fileName_len = resourceFile->path_len - resclone->path_len;
+		int fileName_len = resourceFile->path_len - resclone->path_len;
+		assert(fileName[0] == '/');
+		fileName += 1;  fileName_len -= 1;
 		assert(fileName[0] != '/');
 		struct Garbage_TarEncHdr tarHdr = {
 			.path = fileName,
@@ -1069,9 +1070,12 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		/* setup URL */
 		{
 			/* need parent path, plus our own name. */
-			int path_len = resclone->path_len + 42/*TODO*/;
-			char *tmp = Mallocator_realloc(dload->resclone->deps.mallocator,
-				NULL, 0, path_len + (sizeof"\0"-1));
+			int name_len = (resourceDir->name) ? strlen(resourceDir->name) : 0;
+			int path_cap = 0
+				+ ((resourceDir->parentDir) ? resourceDir->parentDir->path_len : resclone->path_len)
+				+ name_len
+				+ (sizeof"/\0"-1);
+			char *tmp = Mallocator_realloc(dload->resclone->deps.mallocator, NULL, 0, path_cap);
 			if( !tmp ){ assert(!"TODO_9f0C0WeHGN2J9enx"); }
 			char *it = tmp;
 			if( !resourceDir->parentDir ){
@@ -1081,16 +1085,16 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 				ResourceDir*const parent = resourceDir->parentDir;
 				memcpy(it, parent->path, parent->path_len);  it += parent->path_len;
 			}
-			assert(it[-1] == '/');
 			if( !resourceDir->name ){
-				/* nothing to add I guess?*/
+				if( it[-1] != '/' ) *it++ = '/';
 			}else{
-				err = strlen(resourceDir->name);
-				memcpy(it, resourceDir->name, err);  it += err;
+				memcpy(it, resourceDir->name, name_len);  it += name_len;
 			}
 			it[0] = '\0';
+			assert(it - tmp < path_cap);
 			resourceDir->path = tmp;
 			resourceDir->path_len = it - tmp;
+			resourceDir->path_cap = it - tmp;
 		}
 
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
