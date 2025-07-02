@@ -330,6 +330,7 @@ void delTarEnc( struct Garbage_TarEnc**cls_ ){
 
 static int
 onArchiveWrOpen( struct archive*_, void*cls_ ){
+	(void)_; (void)cls_;
 	//archive_set_error(); return ARCHIVE_FATAL;
 	return ARCHIVE_OK;
 }
@@ -347,6 +348,7 @@ static void fJahUpiznu1s0g8bE( int err, void*cls_ ){
 
 static la_ssize_t
 onArchiveWrWrite( struct archive*_, void*cls_, void const*buf, size_t buf_len ){
+	(void)_;
 	THIS_TarEnc(cls_);
 	this->flg &= ~FLG_writeRetvalIsAvail;
 	this->onChunk(this->onChunkArg, buf, buf_len, 0, fJahUpiznu1s0g8bE, cls_);
@@ -369,6 +371,7 @@ f1MIepBCyqxIfQcUf( int err, void*cls_ ){
 }
 static int
 onArchiveWrClose( struct archive*_, void*cls_ ){
+	(void)_;
 	THIS_TarEnc(cls_);
 	this->flg &= ~FLG_closeRetvalIsAvail;
 	this->onChunk(this->onChunkArg, NULL, 0, 4, f1MIepBCyqxIfQcUf, cls_);

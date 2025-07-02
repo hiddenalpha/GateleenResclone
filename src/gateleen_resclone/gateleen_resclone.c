@@ -554,54 +554,15 @@ parseUrl(
 }
 
 
-static size_t
-onCurlDirRsp( char*buf, size_t size, size_t nmemb, void*ResourceDir_ ){
-	LOGT("[TRACE] %s()\n", __func__);
-    int err;
-    fprintf(stderr, "%s%s%s%p%s"FMT_SIZE_T"%s"FMT_SIZE_T"%s%p%s\n", "[TRACE] ", __func__, "( buf=", buf,
-        ", size=", size, ", nmemb=", nmemb, ", cls=", ResourceDir_, " )");
-    ResourceDir *resourceDir = ResourceDir_;
-    //ClsDload *dload = resourceDir->dload;
-    // OBSOLETE CURL *curl = dload->curl;
-    const size_t buf_len = size * nmemb;
-
-	assert(!"TODO_v98AK3klUbNxYqSj");
-    //long rspCode;
-    // OBSOLETE curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &rspCode);
-    //resourceDir->rspCode = rspCode;
-    //if( rspCode != 200 ){
-    //    return size * nmemb; }
-
-    // Collect whole response body into one buf (as cJSON seems unable to parse
-    // partially)
-    if( resourceDir->rspBody_cap < resourceDir->rspBody_len + buf_len +1 ){
-        /* Enlarge buf */
-        resourceDir->rspBody_cap = resourceDir->rspBody_len + buf_len + 1024;
-        void *tmp = realloc(resourceDir->rspBody, resourceDir->rspBody_cap);
-        if( tmp == NULL ){
-            err = size * nmemb/*TODO could we return anything better here?*/; goto endFn; }
-        resourceDir->rspBody = tmp;
-    }
-    memcpy(resourceDir->rspBody+resourceDir->rspBody_len, buf, buf_len);
-    resourceDir->rspBody_len += buf_len;
-    resourceDir->rspBody[resourceDir->rspBody_len] = '\0';
-
-    // Parsing occurs in the caller, as soon we processed whole response.
-
-    err = size * nmemb;
-endFn:
-    return err;
-}
-
-
 static void
 onResourceFileHttpRspHdr(
 	const char*proto, int proto_len,
 	int rspCode,
 	const char*phrase, int phrase_len,
 	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
-	struct Garbage_HttpClientReq**req, void*cls_
+	struct Garbage_HttpClientReq**_, void*cls_
 ){
+	(void)_;
 	LOGT("[TRACE] %s()\n", __func__);
 	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
@@ -620,8 +581,9 @@ onResourceFileHttpRspHdr(
  * called for this http message. */
 static void
 onResourceFileHttpRspBody(
-	const char*buf, int buf_len, int flg, struct Garbage_HttpClientReq**req, void*cls_
+	const char*buf, int buf_len, int flg, struct Garbage_HttpClientReq**_, void*cls_
 ){
+	(void)_;
 	LOGT("[TRACE] %s()\n", __func__);
 	struct Cls595AB944*const cls = cls_; assert(cls->mAGIC == 0x595AB944);
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls->resourceFile);
@@ -712,6 +674,7 @@ onTarOutChunk(
 	void*cls_, const char*buf, int buf_len, int flgs,
 	void(*onDone)(int,void*), void*onDoneArg
 ){
+	assert(flgs == 0 || flgs == 4);
 	LOGT("[TRACE] %s()\n", __func__);
 	int err;
 	ResourceFile*const resourceFile = assert_is_ResourceFile(cls_);
@@ -908,9 +871,10 @@ onResourceDirHttpRspHdr(
 	int rspCode,
 	const char*phrase, int phrase_len,
 	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
-	struct Garbage_HttpClientReq**req,
+	struct Garbage_HttpClientReq**_,
 	void*cls_
 ){
+	(void)_;
 	LOGT("[TRACE] %s()\n", __func__);
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	if( rspCode != 200 ){
@@ -1081,7 +1045,7 @@ onDloadRspBody(
 		assert(resourceDir->jsonParser && "TODO_GtLfTLwu2EjSFiyW");
 	}
 	if( buf_len > 0 || flgs & 4 ){
-		FN_HttpClientReq_pause(resourceDir->dload->req);
+		FN_HttpClientReq_pause(req);
 		FN_JsonTreeParser_write(resourceDir->jsonParser,
 			(void*)buf, buf_len, flgs & 4, fmkKBgMWbr6Scr748, resourceDir);
 		return;
@@ -1252,96 +1216,16 @@ gateleenResclone_download(
 }
 
 
-static size_t
-onUploadChunkRequested( char*buf, size_t size, size_t count, void*Put_ ){
-	LOGT("[TRACE] %s()\n", __func__);
-    int err;
-    //Put *put = Put_;
-    //Upload *upload = put->upload;
-    //const size_t buf_len = size * count;
-
-    assert(!"TODO_KCcAACViAABlNQAA");
-    ssize_t readLen;
-    //readLen = archive_read_data(upload->srcArchive, buf, buf_len);
-    //fprintf(stderr, "%s%lu%s\n", "[DEBUG] Cpy ", readLen, " bytes.");
-    if( readLen < 0 ){
-        //fprintf(stderr, "%s"FMT_SIZE_T"%s%s\n", "[ERROR] Failed to read from archive (code ",
-        //    readLen, "): ", archive_error_string(upload->srcArchive));
-        err = -1; goto endFn;
-    }else if( readLen > 0 ){
-        // Regular read. Data already written to 'buf'. Only need to adjust
-        // return val.
-        err = readLen; goto endFn;
-    }else{ // EOF
-        assert(readLen == 0);
-        err = 0; goto endFn;
-    }
-
-    assert(!"Unreachable code");
-endFn:
-    //fprintf(stderr, "%s%s%s%ld\n", "[DEBUG] ", __func__, "() -> ", err);
-    return err >= 0 ? err : /*CURL_READFUNC_ABORT TODO*/-42;
-}
-
-
-static ssize_t
-addContentTypeHeader( Put*put/*TODO, struct curl_slist *reqHdrs */ ){
-	LOGT("[TRACE] %s()\n", __func__);
-    ssize_t err;
-    char *contentTypeHdr = NULL;
-    //Upload *upload = put->upload;
-    const char *name = put->name;
-
-    uint_t name_len = strlen(put->name);
-    // Find file extension.
-    const char *ext = name + name_len;
-    for(; ext>name && *ext!='.' && *ext!='/' ; --ext );
-    // Convert it to mime type.
-    const char *mimeType;
-    if( *ext == '.' ){
-        mimeType = fileExtToMime(ext +1); // <- +1, to skip the (useless) dot.
-        if( mimeType ){
-            fprintf(stderr, "%s%s%s%s%s\n", "[DEBUG] Resolved file ext '", ext+1,"' to mime '", mimeType?mimeType:"<null>", "'.");
-        }
-    }else if( *ext=='/' || ext==name || *ext=='\0' ){ // TODO Explain why 0x00.
-        mimeType = "application/json";
-        fprintf(stderr, "%s\n", "[DEBUG] No file extension. Fallback to json (gateleen default)");
-    }else{
-        mimeType = NULL;
-    }
-    if( mimeType == NULL ){
-        fprintf(stderr, "%s%s%s\n", "[DEBUG] Unknown file extension '", ext+1, "'. Will NOT add Content-Type header.");
-        mimeType = ""; // <- Need to 'remove' header. To do this, pass an empty value to curl.
-    }
-    uint_t mimeType_len = strlen(mimeType);
-    static const char contentTypePrefix[] = "Content-Type: ";
-    static const uint_t contentTypePrefix_len = sizeof(contentTypePrefix)-1;
-    contentTypeHdr = malloc( contentTypePrefix_len + mimeType_len +1 );
-    memcpy(contentTypeHdr , contentTypePrefix , contentTypePrefix_len);
-    memcpy(contentTypeHdr+contentTypePrefix_len , mimeType , mimeType_len+1);
-    assert(!"TODO_6UcAAGEwAACHKAAA");
-    //reqHdrs = curl_slist_append(reqHdrs, contentTypeHdr);
-    //err = curl_easy_setopt(upload->curl, CURLOPT_HTTPHEADER, reqHdrs);
-    if( err ){
-        fprintf(stderr, "%s"FMT_SIZE_T"\n", "[ERROR] curl_easy_setopt(_, HTTPHEADER, _): ", err);
-        assert(!err); err = -1; goto endFn; }
-
-    err = 0;
-endFn:
-    free(contentTypeHdr);
-    return err;
-}
-
-
 static void
 f7WyuHF2bvoqlU4RT(
 	const char*proto, int proto_len,
 	int rspCode,
 	const char*phrase, int phrase_len,
 	const struct Garbage_HttpMsg_Hdr*hdrs, int hdrs_cnt,
-	struct Garbage_HttpClientReq**req,
-	Garbage_Closure cls
+	struct Garbage_HttpClientReq**_,
+	Garbage_Closure _2
 ){
+	(void)_; (void)_2;
 	LOGT("[TRACE] %s()\n", __func__);
 	if( rspCode != 200 && rspCode != 404 ){
 		LOGD("< %.*s %d %.*s\n", proto_len, proto, rspCode, phrase_len, phrase);
@@ -1354,10 +1238,11 @@ f7WyuHF2bvoqlU4RT(
 
 static void
 fPHXEGzplo6ORfXqF(
-	const char*buf, int buf_len, int flg,
-	struct Garbage_HttpClientReq**req,
+	const char*_1, int _2, int flg,
+	struct Garbage_HttpClientReq**_3,
 	void*cls_
 ){
+	(void)_1;(void)_2;(void)_3;
 	LOGT("[TRACE] %s()\n", __func__);
 	if( flg & 4 ){ /* EOF */
 		struct ClsB5D40F60*const cls = cls_;  assert(cls->mAGIC == 0xB5D40F60);
@@ -1367,7 +1252,8 @@ fPHXEGzplo6ORfXqF(
 
 
 static void
-ffLJT5IsjD1Oow5PK( int retval, void*cls_ ){
+ffLJT5IsjD1Oow5PK( int retval, void*_ ){
+	(void)_;
 	LOGD("[DEBUG] http.onError(%s)\n", strerrname(-retval));
 	assert(!"TODO_WIyp7RBHR6erQutf");
 }
@@ -1636,10 +1522,6 @@ pull( void*cls_ ){
 	}; assert_is_ClsDload(dload);
 	pull_kontinue(0, dload);
 }
-
-
-static void
-TODO_0JZLJNlg6wR1Fifl( int err, void*cls_ ){ assert(!"TODO_0JZLJNlg6wR1Fifl"); }
 
 
 static void

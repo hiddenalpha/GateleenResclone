@@ -19,7 +19,7 @@
 #define LOGW(...) fprintf(stderr, __VA_ARGS__)
 #define LOGI(...) fprintf(stderr, __VA_ARGS__)
 #define LOGD(...) fprintf(stderr, __VA_ARGS__)
-#define LOGT(...) fprintf(stderr, __VA_ARGS__)
+#define LOGT(...) do{if( 0 )fprintf(stderr, __VA_ARGS__);}while(0)
 
 /* [Source](https://git.hiddenalpha.ch/UnspecifiedGarbage.git/tree/src/main/c/common/snippets.c) */
 #define container_of(P, T, M) \
