@@ -124,6 +124,7 @@ struct Garbage_HttpClientReq** newHttpClientReq(
 struct Garbage_JsonTreeParser** newJsonTreeParser(
 	EnvAndDeps*deps,
 	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
+	void(*onParseError)( void*, uintptr_t errOff ),
 	void*onJsonResultCls
 ){
 	return Garbage_newJsonTreeParser(&(struct Garbage_JsonTreeParser_Opts){
@@ -133,22 +134,10 @@ struct Garbage_JsonTreeParser** newJsonTreeParser(
 		.scratchArena = deps->mainArena,
 		.jsonArena = deps->mainArena,
 		.cpuWorker = deps->ioWorker, /*TODO fix mismatch*/
-		.onJsonResult = (void*)onJsonResult, /*TODO fuck cast to deadh*/
 		.cls = onJsonResultCls,
+		.onJsonResult = (void*)onJsonResult, /*TODO fuck cast to deadh*/
+		.onError = onParseError,
 	});
 }
-
-
-//struct Garbage_TarEnc** newTarEnc(
-//	EnvAndDeps*deps,
-//	void (*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*),
-//	void*cls
-//){
-//	return Garbage_newTarEnc(&(struct Garbage_newTarEncOpts){
-//		.mallocator = deps->mallocator,
-//		.onChunk = onChunk,
-//		.cls = cls,
-//	});
-//}
 
 

@@ -426,7 +426,7 @@ parseArgs(
         (*url)[url_len-1] = '/';
         (*url)[url_len] = '\0';
     }else{
-        *url = strdup(*url); /* TODO Mallocator */
+        *url = strdup(urlArg); /* TODO Mallocator */
     }
 
     if( filterRaw ){
@@ -814,10 +814,10 @@ pathFilterAcceptsEntry(
         // Check if we even have such a long filter at all.
         if( idx >= dload->resclone->filter_len ){
             if( dload->resclone->flg & FLG_isFilterFull ){
-                LOGD("[DEBUG] Path longer than --filter-full -> reject.\n");
+                //LOGD("[DEBUG] Path longer than --filter-full -> reject.\n");
                 err = 0; goto endFn;
             }else{
-                LOGD("[DEBUG] Path longer than --filter-part -> accept.\n");
+                //LOGD("[DEBUG] Path longer than --filter-part -> accept.\n");
                 err = 1; goto endFn;
             }
         }
@@ -832,10 +832,10 @@ pathFilterAcceptsEntry(
         regex_t *r = filterArr + idx;
         err = regexec(r, name, 0, 0, 0);
         if( !err ){
-            LOGD("[DEBUG] Segment accepted by filter.\n");
+            //LOGD("[DEBUG] Segment accepted by filter.\n");
             err = 1; /* fall to restoreEndSlash */
         }else if( err == REG_NOMATCH ){
-            LOGD("[DEBUG] Segment rejected by filter.\n");
+            //LOGD("[DEBUG] Segment rejected by filter.\n");
             err = 0; /* fall to restoreEndSlash */
         }else{
             LOGE("[ERROR] regexec(rgx, \"%.*s\") -> %d\n", name_len, name, err);
@@ -1036,6 +1036,17 @@ endFn:
 }
 
 
+static void onJsonParseError( void*cls_, uintptr_t errOff ){
+	LOGT("[TRACE] %s()\n", __func__);
+	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
+	int len = (resourceDir->rspBody_len > 200) ? 200 : resourceDir->rspBody_len;
+	LOGE("Failed to parse JSON around offset %llu:\n%.*s%s\n\t@ %s:%d\n",
+		errOff, len, resourceDir->rspBody,
+		(len != (int)resourceDir->rspBody_len) ? "....." : "",
+		__FILE__, __LINE__);
+}
+
+
 static void
 onDloadRspBody(
 	const char*buf, int buf_len, int flgs,
@@ -1051,11 +1062,19 @@ onDloadRspBody(
 	}
 	if( !resourceDir->jsonParser ){
 		resourceDir->jsonParser = newJsonTreeParser(
-			&resourceDir->dload->resclone->deps, onRspJsonParsed, resourceDir);
+			&resourceDir->dload->resclone->deps,
+			onRspJsonParsed, onJsonParseError, resourceDir);
 		assert(resourceDir->jsonParser && "TODO_GtLfTLwu2EjSFiyW");
 	}
 	if( buf_len > 0 || flgs & 4 ){
 		FN_HttpClientReq_pause(req);
+		/* just-a-hack. Attach buf here, so we can (hopefully) print it on error.
+		 * WARN: This likely will report wrong position, if buffer is chunked! */
+		if( !resourceDir->rspBody ){
+			resourceDir->rspBody = (void*)buf;
+			resourceDir->rspBody_len = buf_len;
+		}
+		/**/
 		FN_JsonTreeParser_write(resourceDir->jsonParser,
 			(void*)buf, buf_len, flgs & 4, fmkKBgMWbr6Scr748, resourceDir);
 		return;
@@ -1085,9 +1104,9 @@ gateleenResclone_download_kontinue( void*cls_ ){
 		Resclone*const resclone = assert_is_Resclone(dload->resclone);
 
 		/* setup URL */
+		int const name_len = (resourceDir->name) ? strlen(resourceDir->name) : 0;
 		{
 			/* need parent path, plus our own name. */
-			int name_len = (resourceDir->name) ? strlen(resourceDir->name) : 0;
 			int path_cap = 0
 				+ ((resourceDir->parentDir) ? resourceDir->parentDir->path_len : resclone->path_len)
 				+ name_len
@@ -1113,6 +1132,13 @@ gateleenResclone_download_kontinue( void*cls_ ){
 			resourceDir->path_len = it - tmp;
 			resourceDir->path_cap = it - tmp;
 		}
+		if( resourceDir->parentDir ){
+			err = pathFilterAcceptsEntry(dload, resourceDir->parentDir,
+				resourceDir->name, name_len);
+			if( err <= 0 ){ /* error or reject */
+				resourceDir->eno = err;  goto endWithEno;
+			}
+		}
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
 			.pushIoTask = onDloadPushIoTask,
 			.onError = onDloadError,
@@ -1122,9 +1148,13 @@ gateleenResclone_download_kontinue( void*cls_ ){
 		int isTls = (resclone->flg & FLG_isTls);
 		//LOGD("[DEBUG] dload \"http%s://%s:%d%s\"\n", isTls?"s":"",
 		//	resclone->host, resclone->port, resourceDir->path);
+		struct Garbage_HttpMsg_Hdr hdrs[] = {
+			{ .key = "Accept", .key_len = 6,
+			  .val = "application/json", .val_len = 16, },
+		};
 		dload->req = newHttpClientReq(&dload->resclone->deps,
-			"GET", resclone->host, resclone->port, isTls, resourceDir->path, NULL, 0,
-			&requestMentor, resourceDir);
+			"GET", resclone->host, resclone->port, isTls, resourceDir->path,
+			hdrs, sizeof hdrs/sizeof*hdrs, &requestMentor, resourceDir);
 		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
 		FN_HttpClientReq_closeSnk(dload->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;

@@ -91,6 +91,7 @@ struct Garbage_HttpClientReq** newHttpClientReq(
 struct Garbage_JsonTreeParser** newJsonTreeParser(
 	struct EnvAndDeps*,
 	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
+	void(*onParseError)( void*, uintptr_t ),
 	void*onJsonResultCls
 );
 
