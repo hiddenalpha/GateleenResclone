@@ -232,6 +232,7 @@ TarEnc_nextEntry(
 	archive_entry_set_filetype(this->entry, AE_IFREG);
 	archive_entry_set_size(this->entry, hdr->nBodyOctets);
 	archive_entry_set_perm(this->entry, 0644);
+	archive_entry_set_mtime(this->entry, hdr->mTimeEpchSec, 0);
 	struct ClsC04C3362*cls = &this->clsC04C3362;
 	assert(cls->mAGIC == 0);
 	*cls = (struct ClsC04C3362){
