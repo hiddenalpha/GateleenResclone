@@ -111,7 +111,20 @@ nextLibarchiveHdr(
 	THIS_TarDec(cls_);
 
 	err = archive_read_next_header(this->archive, &this->currEntry);
-	if( err == ARCHIVE_OK ){
+	if( err == ARCHIVE_FATAL ){
+		LOGW("%s: archive_read_next_header(): %s\n\t@ %s:%d\n",
+			strerrname(archive_errno(this->archive)), archive_error_string(this->archive),
+			__FILE__, __LINE__);
+		onDone(archive_errno(this->archive), NULL, onDoneArg);
+		return;
+	}
+	if( err == ARCHIVE_WARN ){
+		LOGW("%s: archive_read_next_header(): %s\n\t@ %s:%d\n",
+			strerrname(archive_errno(this->archive)), archive_error_string(this->archive),
+			__FILE__, __LINE__);
+		/* keep going */
+	}
+	if( err == ARCHIVE_OK || err == ARCHIVE_WARN ){
 		char const*name = archive_entry_pathname(this->currEntry);
 		int ftype = archive_entry_filetype(this->currEntry);
 		struct Garbage_TarDecHdr hdr = {
@@ -126,11 +139,11 @@ nextLibarchiveHdr(
 		onDone(1, &hdr, onDoneArg);
 		return;
 	}
-
-	/* TODO I guess "no more entries"? But IMHO we should also check for other
-	 * (maybe error) values? */
-
-	onDone(0, NULL, onDoneArg);
+	if( err == ARCHIVE_EOF ){
+		onDone(0, NULL, onDoneArg);
+		return;
+	}
+	assert(!"unreachable");
 }
 
 
@@ -145,7 +158,15 @@ f5EOnzAu082WtWmRB(
 	int err;
 	THIS_TarDec(cls_);
 	err = archive_read_data(this->archive, buf, buf_cap);
-	int flgs = (err == 0) ? 4 : 0;
+	if( err < 0 ){
+		err = -archive_errno(this->archive);  assert(err < 0);
+		LOGW("%s: archive_read_data(): %s\n\t@ %s:%d\n",
+			strerrname(-err), archive_error_string(this->archive),
+			__FILE__, __LINE__);
+		onDone(buf, -err, 0, onDoneArg);
+		return;
+	}
+	int const flgs = (err == 0) ? 4 : 0;
 	onDone(buf, err, flgs, onDoneArg);
 }
 
@@ -212,6 +233,21 @@ static void
 fazUoq6l4CA1YQBUo( void*cls_ ){
 	struct ClsC04C3362*const cls = cls_;  assert(cls->mAGIC == 0xC04C3362);
 	cls->err = archive_write_header(cls->this->archive, cls->this->entry);
+	if( cls->err == ARCHIVE_RETRY || cls->err == ARCHIVE_FATAL ){
+		LOGE("%s: archive_write_header(): %s\n\t@ %s:%d\n",
+			strerrname(archive_errno(cls->this->archive)),
+			archive_error_string(cls->this->archive),
+			__FILE__, __LINE__);
+		cls->err = archive_errno(cls->this->archive);
+	}else if( cls->err == ARCHIVE_WARN ){
+		LOGW("%s: archive_write_header(): %s\n\t@ %s:%d\n",
+			strerrname(archive_errno(cls->this->archive)),
+			archive_error_string(cls->this->archive),
+			__FILE__, __LINE__);
+		cls->err = 0;
+	}else{
+		assert(cls->err == ARCHIVE_OK);
+	}
 	(*cls->this->env)->enque(cls->this->env, fF0H4lmzEVJgxuvFv, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
@@ -257,6 +293,11 @@ static void
 fVIW2DcjiyVzh2FpT( void*cls_ ){
 	struct Cls476A9D42*const cls = cls_; assert(cls->mAGIC == 0x476A9D42);
 	cls->err = archive_write_data(cls->this->archive, cls->buf, cls->buf_len);
+	if( cls->err < 0 ){
+		cls->err = archive_errno(cls->this->archive);
+		LOGD("%s: archive_write_data(): %s\n\t@ %s:%d\n", strerrname(-cls->err),
+			archive_error_string(cls->this->archive), __FILE__, __LINE__);
+	}
 	(*cls->this->env)->enque(cls->this->env, f6Oyecu5X8O7rT879, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
@@ -300,6 +341,12 @@ static void
 fqRmD2uoLc5rOoCY1( void*cls_ ){
 	struct Cls50735D7E*const cls = cls_; assert(cls->mAGIC == 0x50735D7E);
 	cls->err = archive_write_close(cls->this->archive);
+	if( cls->err != ARCHIVE_OK ){
+		LOGD("%s: archive_write_close(): %s\n\t@ %s:%d\n",
+			strerrname(archive_errno(cls->this->archive)),
+			archive_error_string(cls->this->archive),
+			__FILE__, __LINE__);
+	}
 	(*cls->this->env)->enque(cls->this->env, fHFTMFjhZkOmtQoAq, cls);
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
@@ -340,7 +387,7 @@ void delTarEnc( struct Garbage_TarEnc**cls_ ){
 static int
 onArchiveWrOpen( struct archive*_, void*cls_ ){
 	(void)_; (void)cls_;
-	//archive_set_error(); return ARCHIVE_FATAL;
+	/* TODO anything to do here? */
 	return ARCHIVE_OK;
 }
 
@@ -425,7 +472,7 @@ newTarEnc(
 	if( !this->archive ){ goto fail; }
 	err = MUTX_INIT(&this->mutx, NULL);  assert(!err); /*TODO free*/
 	err = COND_INIT(&this->condChunkRetval, NULL);  assert(!err); /*TODO free*/
-	err =  archive_write_set_format_ustar(this->archive)
+	err =  archive_write_set_format_pax_restricted(this->archive)
 		|| archive_write_open(this->archive, &this->pimpl,
 			onArchiveWrOpen, onArchiveWrWrite, onArchiveWrClose);
 	if( err ){

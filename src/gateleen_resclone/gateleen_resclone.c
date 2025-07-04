@@ -741,8 +741,10 @@ copyBufToArchive_kontinue( int err, void*cls_ ){
 		(*dload->tar)->nextEntry(dload->tar, &tarHdr, copyBufToArchive_kontinue, cls);
 		return;
 	}case sE2iEFO6D7uNJ2A85:{
-		if( err < 0 ) LOGW("%s: TODO_vnbvTTOLx5A3g9uf\n\t@ %s:%d\n",
-			strerrname(-err), __FILE__, __LINE__);
+		if( err < 0 ){
+			LOGW("%s: TODO_vnbvTTOLx5A3g9uf\n\t@ %s:%d\n",
+				strerrname(-err), __FILE__, __LINE__);
+		}
 		if( resourceFile->buf_len > 0 ){
 			CORO_STATE = sX7Vo8fJSSxJAJtHp;
 			(*dload->tar)->write(dload->tar, resourceFile->buf, resourceFile->buf_len,
