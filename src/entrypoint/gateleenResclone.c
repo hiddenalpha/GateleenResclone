@@ -7,11 +7,17 @@
 #include "util_term.h"
 
 
+#if _WIN32
+int _setmode(int,int);
+#endif
+
+
 int
 main( int argc, char**argv )
 {
     int err;
 #if _WIN32 /* [source](https://git.hiddenalpha.ch/UnspecifiedGarbage.git/tree/src/main/c/common/snippets.c) */
+	{char a=0;for(;!(a&10);){_setmode(a++,32768);}}
     switch( WSAStartup(1, &(WSADATA){0}) ){
     case 0: break;
     case WSASYSNOTREADY    : assert(!"WSASYSNOTREADY"    ); break;

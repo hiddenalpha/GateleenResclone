@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #if __WIN32
 #else
 #	include <unistd.h>
@@ -641,10 +642,11 @@ collectResourceIntoMemory( struct Cls595AB944*cls ){
 			.onRspBody = onResourceFileHttpRspBody,
 			.onError = onResourceFileError,
 		};
-
+		int const isTls = (resclone->flg & FLG_isTls);
+		//LOGD("[DEBUG] dload \"http%s://%s:%d%s\"\n", isTls?"s":"", resclone->host, resclone->port, resourceFile->path);
 		struct Garbage_HttpClientReq **req;
 		req = newHttpClientReq(&resclone->deps, "GET", resclone->host, resclone->port,
-			(resclone->flg & FLG_isTls), resclone->path, NULL, 0, &reqMentor, cls);
+			isTls, resourceFile->path, NULL, 0, &reqMentor, cls);
 		if( !req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
 		CORO_STATE = sgDMgDx6HnAdNWWis;
 		FN_HttpClientReq_closeSnk(req);
@@ -671,7 +673,7 @@ collectResourceIntoMemory( struct Cls595AB944*cls ){
 
 static void
 onTarOutChunk(
-	void*cls_, const char*buf, int buf_len, int flgs,
+	void*cls_, char const*buf, int buf_len, int flgs,
 	void(*onDone)(int,void*), void*onDoneArg
 ){
 	assert(flgs == 0 || flgs == 4);
@@ -683,7 +685,7 @@ onTarOutChunk(
 		if( !dload->archiveFile || !strncmp(dload->archiveFile, "-", 2) ){
 			dload->tarFile = stdout;
 		}else{
-			dload->tarFile = fopen(dload->archiveFile, "w");
+			dload->tarFile = fopen(dload->archiveFile, "wb");
 			if( !dload->tarFile ){
 				err = -errno;
 				LOGE("%s: \"%s\"\n\t@ %s:%d\n", strerrname(-err), dload->archiveFile,
@@ -693,11 +695,16 @@ onTarOutChunk(
 			}
 		}
 	}
-	err = fwrite(buf, 1, buf_len, dload->tarFile);
-	if( err != buf_len ){ err = -errno;
-		LOGE("%s:\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
-		dload->resclone->exitCode = 1;
-		return;
+	if( buf_len > 0 ){
+		err = fwrite(buf, 1, buf_len, dload->tarFile);
+		if( err != buf_len ){ err = -errno;
+			LOGE("%s:\n\t@ %s:%d\n", strerrname(-err), __FILE__, __LINE__);
+			dload->resclone->exitCode = 1;
+			return;
+		}
+	}
+	if( flgs & 4 ){
+		fclose(dload->tarFile);  dload->tarFile = NULL;
 	}
 	onDone(buf_len, onDoneArg);
 }
@@ -727,6 +734,7 @@ copyBufToArchive_kontinue( int err, void*cls_ ){
 			.path = fileName,
 			.path_len = fileName_len,
 			.mode = 0644,
+			.mTimeEpchSec = time(NULL),
 			.nBodyOctets = resourceFile->buf_len,
 		};
 		CORO_STATE = sE2iEFO6D7uNJ2A85;
@@ -1054,13 +1062,15 @@ onDloadRspBody(
 }
 
 
-static void gateleenResclone_download_kontinueIV( int i, void*v ){
+static void
+faoAd1hYqUJczMbAZ( int i, void*v ){
 	LOGT("[TRACE] %s()\n", __func__);
 	ResourceDir*const resourceDir = assert_is_ResourceDir(v);
 	resourceDir->eno = i;
 	gateleenResclone_download_kontinue(resourceDir);
 }
-static void gateleenResclone_download_kontinue( void*cls_ ){
+static void
+gateleenResclone_download_kontinue( void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
 	int err;
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
@@ -1101,7 +1111,6 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 			resourceDir->path_len = it - tmp;
 			resourceDir->path_cap = it - tmp;
 		}
-
 		static struct Garbage_HttpClientReq_Mentor requestMentor = {
 			.pushIoTask = onDloadPushIoTask,
 			.onError = onDloadError,
@@ -1109,6 +1118,8 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 			.onRspBody = onDloadRspBody,
 		};
 		int isTls = (resclone->flg & FLG_isTls);
+		//LOGD("[DEBUG] dload \"http%s://%s:%d%s\"\n", isTls?"s":"",
+		//	resclone->host, resclone->port, resourceDir->path);
 		dload->req = newHttpClientReq(&dload->resclone->deps,
 			"GET", resclone->host, resclone->port, isTls, resourceDir->path, NULL, 0,
 			&requestMentor, resourceDir);
@@ -1144,7 +1155,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 			assert(childName[childName_len] == '\0');
 			CORO_STATE = onChildDone;
 			gateleenResclone_download(dload, resourceDir, childName,
-				gateleenResclone_download_kontinueIV, resourceDir);
+				faoAd1hYqUJczMbAZ, resourceDir);
 			return;
 		}
 		/* NOT a dir (aka collection), so we assume leaf (aka file/resource) */
@@ -1158,7 +1169,7 @@ static void gateleenResclone_download_kontinue( void*cls_ ){
 		*resourceFile = (ResourceFile){
 			.mAGIC = ResourceFile_mAGIC,
 			.resourceDir = resourceDir,
-			.onDone = gateleenResclone_download_kontinueIV,
+			.onDone = faoAd1hYqUJczMbAZ,
 			.onDoneArg = resourceDir,
 		};
 		CORO_STATE = onChildDone;
@@ -1205,9 +1216,9 @@ gateleenResclone_download(
 		.mAGIC = ResourceDir_mAGIC,
 		.dload = dload,
 		.parentDir = parentResourceDir,
-		/* TODO Mallocator */
-		/* TODO free */
-		.name = (entryName) ? strdup/*TODO mallocator*/(entryName) : NULL,
+		.name = (entryName) ? strdup(entryName) : NULL,
+		/* TODO mallocator ---^^^^^^ */
+		/* TODO free ---------^^^^^^ */
 		.onDone = onDone,
 		.onDoneArg = onDoneArg,
 	};
@@ -1485,8 +1496,8 @@ pull_kontinue( int err, void*cls_ ){
 	enum { begin=0, sRgcmUWoHED7pgReU, sArUiyl2d1oYejma4, };
 	switch( CORO_STATE ){case begin:{
 		if( resclone->file == NULL && isatty(1) ){
-			fprintf(stderr, "%s\n",
-				"[ERROR] Are you sure you wanna write binary content to tty?");
+			LOGE("ERROR: Are you sure you wanna write binary content to tty?\n\t@ %s:%d\n",
+				__FILE__, __LINE__);
 			resclone->eno = -1; CORO_GOTO(endWithEno);
 		}
 		CORO_STATE = sArUiyl2d1oYejma4;

@@ -79,6 +79,7 @@ struct TarEncByLibarchive {
 	unsigned mAGIC;
 	int flg;
 	int writeRetval, closeRetval;
+	uint_least64_t remainBodyLen;
 	struct archive *archive;
 	struct archive_entry *entry;
 	MUTX mutx;
@@ -239,6 +240,7 @@ TarEnc_nextEntry(
 		.onDone = onDone,
 		.onDoneArg = onDoneArg,
 	};
+	this->remainBodyLen = hdr->nBodyOctets;
 	(*this->env)->addAwaitToken(this->env);
 	(*this->ioWorker)->enque(this->ioWorker, fazUoq6l4CA1YQBUo, cls);
 }
@@ -266,6 +268,12 @@ TarEnc_write(
 	void* onDoneArg
 ){
 	THIS_TarEnc(cls_);
+	assert(buf_len >= 0);
+	if( (uint_least64_t)buf_len > this->remainBodyLen ){
+		LOGD("assert(%d <= %llu)\n\t@ %s:%d\n",
+			buf_len, this->remainBodyLen, __FILE__, __LINE__);
+		abort();
+	}
 	struct Cls476A9D42*const cls = &this->cls476A9D42;
 	assert(cls->mAGIC == 0);
 	*cls = (struct Cls476A9D42){
@@ -372,13 +380,13 @@ f1MIepBCyqxIfQcUf( int err, void*cls_ ){
 static int
 onArchiveWrClose( struct archive*_, void*cls_ ){
 	(void)_;
+	LOGT("[TRACE] %s()\n", __func__);
 	THIS_TarEnc(cls_);
 	this->flg &= ~FLG_closeRetvalIsAvail;
 	this->onChunk(this->onChunkArg, NULL, 0, 4, f1MIepBCyqxIfQcUf, cls_);
 	MUTX_LOCK(&this->mutx);
-	while(!( this->flg & FLG_closeRetvalIsAvail )){
+	while(!( this->flg & FLG_closeRetvalIsAvail ))
 		COND_WAIT(&this->condChunkRetval, &this->mutx);
-	}
 	MUTX_UNLOCK(&this->mutx);
 	return this->closeRetval;
 }
