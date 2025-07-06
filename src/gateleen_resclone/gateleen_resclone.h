@@ -62,6 +62,7 @@ struct EnvAndDeps {
 	struct Garbage_SocketMgr **socketMgr;
 	struct Garbage_IoMultiplexer **ioMultiplexer;
 	struct Garbage_ThreadPool **ioWorker;
+	struct Garbage_PoolConnection **connectionPool;
 	struct Garbage_Networker **networker;
 };
 

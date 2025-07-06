@@ -51,6 +51,15 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
         .ioWorker = deps->ioWorker,
     });
 	/**/
+	assert(deps->mallocator);
+	assert(!deps->connectionPool);
+	deps->connectionPool = Garbage_newPoolConnection(&(struct Garbage_PoolConnection_Opts){
+		.mallocator = deps->mallocator,
+		.socketMgrPlain = deps->socketMgr,
+		//.socketMgrTls = (*deps->tlsClient)->asSocketMgr(deps->tlsClient),
+	});
+	assert(deps->connectionPool);
+	/**/
 	assert(deps->socketMgr);
 	assert(deps->ioWorker);
 	assert(deps->networker);
@@ -78,40 +87,16 @@ static void socketAcquire(
 	void(*onDone)(int err,struct Garbage_Socket**sock,Garbage_Closure arg), Garbage_Closure onDoneArg
 ){
 	struct Cls45A3C95F*const cls = cls_;  assert(cls->mAGIC == 0x45A3C95F);
-	static struct Garbage_TlsClient_Mentor socketMgrTlsMentor = { 0 };
-	//socketMgrTlsMentor.onError = mentor->onError; /* <- TODO: WARN we're abusing static here */
-	struct Garbage_TlsClient **tlsClient = NULL;
-	int const useTls = (flg & 8);
-	if( useTls ){
-		/* TODO: WARN fix this resource-leak! */
-		tlsClient = Garbage_newTlsClient(
-			cls->deps->env, &socketMgrTlsMentor, NULL,
-			&(struct Garbage_TlsClient_Opts){
-				.peerHostname = cls->peerHostname,
-				.mallocator = cls->deps->mallocator,
-				.socketMgr = cls->deps->socketMgr,
-				.ioWorker = cls->deps->ioWorker,
-			}
-		);
-		(*(*tlsClient)->asSocketMgr(tlsClient))->sockAcquireConnect(
-			(*tlsClient)->asSocketMgr(tlsClient), sockaddr, sockaddr_len, onDone, onDoneArg);
-	}else{
-		(*cls->deps->socketMgr)->sockAcquireConnect(cls->deps->socketMgr, sockaddr, sockaddr_len,
-			onDone, onDoneArg);
-	}
+	(*cls->deps->connectionPool)->sockAcquire(cls->deps->connectionPool,
+		sockaddr, sockaddr_len, flg, cls->peerHostname, onDone, onDoneArg);
 }
 
 
 /* TODO move this IMPL to where IMPLs belong, away from GLUE. */
 static void releaseSocketOfWhateverImpl( void*cls_, struct Garbage_Socket**sock, int flg ){
+	struct Cls45A3C95F*const cls = cls_;  assert(cls->mAGIC == 0x45A3C95F);
 	assert(flg == 0 || flg == 1);
-	if( flg & 1 ){
-		/* MUST NOT be ReUsed! No pooling allowed! */
-		(*sock)->close(sock, flg, noopVoid, NULL);
-	}else{
-		//LOGD("ENOTSUP: TODO impl connection pooling\n\t@ %s:%d\n", __FILE__, __LINE__);
-		(*sock)->close(sock, flg, noopVoid, NULL);
-	}
+	(*cls->deps->connectionPool)->sockRelease(cls->deps->connectionPool, sock, flg);
 }
 
 
