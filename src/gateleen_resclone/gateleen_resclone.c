@@ -650,7 +650,7 @@ collectResourceIntoMemory( struct Cls595AB944*cls ){
 			isTls, resourceFile->path, NULL, 0, &reqMentor, cls);
 		if( !cls->req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
 		CORO_STATE = sgDMgDx6HnAdNWWis;
-		FN_HttpClientReq_closeSnk(cls->req);
+		FN_HttpClientReq_write(cls->req, NULL, 0, 0x4, noopVoid, NULL);
 		return;
 	}case sgDMgDx6HnAdNWWis:{
 		if( cls->eno ){
@@ -1162,7 +1162,7 @@ gateleenResclone_download_kontinue( void*cls_ ){
 			"GET", resclone->host, resclone->port, isTls, resourceDir->path,
 			hdrs, sizeof hdrs/sizeof*hdrs, &requestMentor, resourceDir);
 		if( !resourceDir->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
-		FN_HttpClientReq_closeSnk(resourceDir->req);
+		FN_HttpClientReq_write(resourceDir->req, NULL, 0, 0x4, noopVoid, NULL);
 		CORO_STATE = sywgOcZGKrgTP3onF;
 		return;
 	}case sywgOcZGKrgTP3onF:{
