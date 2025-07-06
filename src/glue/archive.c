@@ -2,9 +2,10 @@
 #include "gateleen_resclone.h"
 
 #include <assert.h>
-#include <stdio.h>
-#include <string.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "archive.h"
 #include "archive_entry.h"
@@ -312,7 +313,7 @@ TarEnc_write(
 	THIS_TarEnc(cls_);
 	assert(buf_len >= 0);
 	if( (uint_least64_t)buf_len > this->remainBodyLen ){
-		LOGD("assert(%d <= %llu)\n\t@ %s:%d\n",
+		LOGD("assert(%d <= %lu)\n\t@ %s:%d\n",
 			buf_len, this->remainBodyLen, __FILE__, __LINE__);
 		abort();
 	}

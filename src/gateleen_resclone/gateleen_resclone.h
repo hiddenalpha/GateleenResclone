@@ -25,12 +25,14 @@
 #define container_of(P, T, M) \
      ((T*)( ((size_t)P) - ((size_t)((ptrdiff_t)&((T*)0)->M - (ptrdiff_t)0) )))
 
-/* TODO fix this shit */
 #if _WIN32
 #	define FALL __attribute__ ((fallthrough)) /* for fucking annoying compilers */
+#	define FUCKWINDOOFLONG (long unsigned)
 #else
 #	define FALL do{}while(0)
+#	define FUCKWINDOOFLONG /*no BS needed on sane systems*/
 #endif
+
 
 #define Mallocator_realloc(A, B, C, D) (*A)->reallocBlocking(A, B, C, D)
 #define FN_ThreadPool_enque(A, B, C) (*A)->enque(A, B, C)
@@ -105,6 +107,9 @@ struct Garbage_TarDec** newTarDec( struct EnvAndDeps*, char const*archivePath );
 
 
 char const*strerrname(int);
+
+
+static void noopVoid(){}
 
 
 #endif /* INCGUARD_d16bcf26aca7174fb8aae7641c828007 */

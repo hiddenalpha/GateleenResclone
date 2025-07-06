@@ -59,6 +59,7 @@ struct Cls595AB944 /* state of collectResourceIntoMemory() */ {
 	int coroState;
 	int eno;
 	ResourceFile *resourceFile;
+	struct Garbage_HttpClientReq **req;
 	void(*onDone)(int err,void*arg);
 	void*onDoneArg;
 };
@@ -105,7 +106,6 @@ struct ClsFE7D8786 /* aka copyBufToArchive */ {
 struct ClsDload {
     unsigned mAGIC;
     struct Resclone *resclone;
-    struct Garbage_HttpClientReq **req; /*TODO unref*/
 	struct Garbage_TarEnc **tar;
 	FILE *tarFile;
     struct archive *dstArchive;
@@ -125,6 +125,7 @@ struct ResourceDir {
 	int state_gateleenResclone_download;
     struct ClsDload *dload;
     struct ResourceDir *parentDir;
+	struct Garbage_HttpClientReq **req;
 	char *path;  int path_len, path_cap;
 	short httpRspCode;
     char *rspBody;
@@ -644,12 +645,12 @@ collectResourceIntoMemory( struct Cls595AB944*cls ){
 		};
 		int const isTls = (resclone->flg & FLG_isTls);
 		//LOGD("[DEBUG] dload \"http%s://%s:%d%s\"\n", isTls?"s":"", resclone->host, resclone->port, resourceFile->path);
-		struct Garbage_HttpClientReq **req;
-		req = newHttpClientReq(&resclone->deps, "GET", resclone->host, resclone->port,
+		assert(!cls->req);
+		cls->req = newHttpClientReq(&resclone->deps, "GET", resclone->host, resclone->port,
 			isTls, resourceFile->path, NULL, 0, &reqMentor, cls);
-		if( !req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
+		if( !cls->req ){ assert(!"TODO_pMYskoj4hmYk1DET"); }
 		CORO_STATE = sgDMgDx6HnAdNWWis;
-		FN_HttpClientReq_closeSnk(req);
+		FN_HttpClientReq_closeSnk(cls->req);
 		return;
 	}case sgDMgDx6HnAdNWWis:{
 		if( cls->eno ){
@@ -661,6 +662,9 @@ collectResourceIntoMemory( struct Cls595AB944*cls ){
 				resourceFile->path + resclone->path_len);
 		}
 	}/*endWithClsEno*/{
+		assert(cls->req);
+		(*cls->req)->unref(cls->req);
+		cls->req = NULL;
 		void(*onDone)(int,void*) = cls->onDone;  cls->onDone = NULL;
 		assert(onDone);
 		onDone(cls->eno, cls->onDoneArg);
@@ -869,8 +873,8 @@ onDloadError( int retval, void*cls_ ){
 	LOGW("%s:\n\t@ %s:%d\n", strerrname(-retval), __FILE__, __LINE__);
 	__asm__("int $3;nop;");/*TODO*/
 	resourceDir->eno = retval;
-	assert(*resourceDir->dload->req);
-	assert((*resourceDir->dload->req)->pause);
+	assert(*resourceDir->req);
+	assert((*resourceDir->req)->pause);
 	gateleenResclone_download_kontinue(resourceDir);
 }
 
@@ -971,7 +975,8 @@ fmkKBgMWbr6Scr748( int err, void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
 	if( err < 0 ){ assert(!"TODO_NsR9vBN74QJzVZX5"); }
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
-	FN_HttpClientReq_resume(resourceDir->dload->req);
+	assert(resourceDir->req);
+	FN_HttpClientReq_resume(resourceDir->req);
 }
 
 
@@ -1040,8 +1045,8 @@ static void onJsonParseError( void*cls_, uintptr_t errOff ){
 	LOGT("[TRACE] %s()\n", __func__);
 	ResourceDir*const resourceDir = assert_is_ResourceDir(cls_);
 	int len = (resourceDir->rspBody_len > 200) ? 200 : resourceDir->rspBody_len;
-	LOGE("Failed to parse JSON around offset %llu:\n%.*s%s\n\t@ %s:%d\n",
-		errOff, len, resourceDir->rspBody,
+	LOGE("Failed to parse JSON around offset %lu:\n%.*s%s\n\t@ %s:%d\n",
+		FUCKWINDOOFLONG errOff, len, resourceDir->rspBody,
 		(len != (int)resourceDir->rspBody_len) ? "....." : "",
 		__FILE__, __LINE__);
 }
@@ -1152,11 +1157,12 @@ gateleenResclone_download_kontinue( void*cls_ ){
 			{ .key = "Accept", .key_len = 6,
 			  .val = "application/json", .val_len = 16, },
 		};
-		dload->req = newHttpClientReq(&dload->resclone->deps,
+		assert(!resourceDir->req);
+		resourceDir->req = newHttpClientReq(&dload->resclone->deps,
 			"GET", resclone->host, resclone->port, isTls, resourceDir->path,
 			hdrs, sizeof hdrs/sizeof*hdrs, &requestMentor, resourceDir);
-		if( !dload->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
-		FN_HttpClientReq_closeSnk(dload->req);
+		if( !resourceDir->req ){ assert(!"TODO_9A7x4x7VPEDHXEkX"); }
+		FN_HttpClientReq_closeSnk(resourceDir->req);
 		CORO_STATE = sywgOcZGKrgTP3onF;
 		return;
 	}case sywgOcZGKrgTP3onF:{
@@ -1215,6 +1221,9 @@ gateleenResclone_download_kontinue( void*cls_ ){
 		resourceDir->currChildName += 1;
 		goto nextChild;
 	}endWithEno:{
+		assert(resourceDir->req);
+		(*resourceDir->req)->unref(resourceDir->req);
+		resourceDir->req = NULL;
 		void(*onDone)(int,void*) = resourceDir->onDone;  resourceDir->onDone = NULL;
 		onDone(resourceDir->eno, resourceDir->onDoneArg);
 		return;
