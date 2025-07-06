@@ -314,7 +314,7 @@ TarEnc_write(
 	assert(buf_len >= 0);
 	if( (uint_least64_t)buf_len > this->remainBodyLen ){
 		LOGD("assert(%d <= %lu)\n\t@ %s:%d\n",
-			buf_len, this->remainBodyLen, __FILE__, __LINE__);
+			buf_len, FUCKWINDOOFLONG this->remainBodyLen, __FILE__, __LINE__);
 		abort();
 	}
 	struct Cls476A9D42*const cls = &this->cls476A9D42;
