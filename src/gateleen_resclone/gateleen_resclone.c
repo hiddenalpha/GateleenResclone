@@ -28,9 +28,11 @@
 
 
 #if __WIN32
-#   define PRIuz "%llu"
+#	define PRIu64 "%llu"  /* FUCK stupid systems */
+#   define PRIuz "%llu"  /* FUCK stupid systems */
 #   define isatty(FD) 1  /* TODO FUCK stupid systems */
 #else
+#	define PRIu64 "%lu"
 #   define PRIuz "%lu"
 #endif
 
@@ -453,9 +455,9 @@ DloadNode_dtor( struct DloadNode*this ){
 
 static void
 DloadNode_unref( struct DloadNode*this ){
-	struct Qntan_Mallocator **mallocator;
+	struct Qntan_Mallocator **mallocator = this->mallocator;
 	DloadNode_dtor(this);
-	FN_Mallocator_realloc(this->mallocator, this, sizeof*this, 0);
+	FN_Mallocator_realloc(mallocator, this, sizeof*this, 0);
 }
 
 
@@ -641,7 +643,7 @@ static void
 onDirectoryJsonResult( CLOSURE _, int err, void*json_, uint64_t errOff ){
 	DEFINE_DloadNode(dload, _);
 	if( err != 0 ){
-		LOGE("Json parse fail at off %lu:\n%.*s\n\t@ %s:%d (%s)\n",
+		LOGE("Json parse fail at off " PRIu64 ":\n%.*s\n\t@ %s:%d (%s)\n",
 			errOff, MIN(dload->rspBody_len, 4096), dload->rspBody, __FILE__, __LINE__, __func__);
 		exit(1); /*TODO*/
 	}

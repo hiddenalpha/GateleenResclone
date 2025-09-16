@@ -6,16 +6,15 @@ AR=ar
 BINEXT=
 LIBSEXT=.a
 #WINSHITINCLUDE=-Imingw64-include
-#WINSHITLIBS=-lpcre -lpcreposix
+#WINSHITLIBS=-lpcre -lpcreposix -lcrypt32 -lWldap32
 
 ifndef PROJECT_VERSION
 	PROJECT_VERSION := $(shell git describe | sed 's;^v;;')
 endif
 
 
-CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough))
-# For optimized builds, consider:
-# CFLAGS= -02 -s -DNDEBUG=1 --std=c99 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough))
+# For optimized builds, consider:  -02 -s -DNDEBUG=1
+CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough)) -DCURL_STATICLIB
 
 LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -lgarbage -lcJSON -lcurl $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
 
