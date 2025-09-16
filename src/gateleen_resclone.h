@@ -3,9 +3,8 @@
 #ifndef INCGUARD_d16bcf26aca7174fb8aae7641c828007
 #define INCGUARD_d16bcf26aca7174fb8aae7641c828007
 
-#define Garbage_Closure void*
+#define _POSIX_C_SOURCE 200809L
 
-#include "commonbase.h"
 #include <regex.h>
 
 #include <stdint.h>
@@ -14,10 +13,10 @@
 
 #include <Garbage.h>
 
-#include "mime.h"
-
 #define CLOSURE uintptr_t
 
+#define STR_QUOT_(S) #S
+#define STR_QUOT(S) STR_QUOT_(S)
 
 #define LOGF(...) fprintf(stderr, __VA_ARGS__)
 #define LOGE(...) fprintf(stderr, __VA_ARGS__)
@@ -63,13 +62,11 @@
 
 
 
-/** Operation mode. */
-typedef  enum OpMode  OpMode; /*<- TODO del*/
-enum OpMode {
-    MODE_NULL =0,
-    MODE_FETCH=1,
-    MODE_PUSH =2
-};
+
+
+
+
+
 
 
 struct EnvAndDeps {
@@ -81,6 +78,50 @@ struct EnvAndDeps {
 	struct Qntan_Executor **ioWorker;
 	struct Qntan_Networker **networker;
 };
+
+
+
+
+
+
+
+
+
+
+/*
+ * Returns ptr to statically allocated mimetype.  */
+char* fileExtToMime( char const*ext );
+
+
+
+
+
+
+
+
+
+
+int initEnv( struct EnvAndDeps* );
+
+
+
+
+
+
+
+
+
+
+struct Qntan_File**
+newFileStdlib( struct EnvAndDeps*, FILE*, int takeOwnership, void(**unref)(struct Qntan_File**) );
+
+
+
+
+
+
+
+
 
 
 struct HttpClientReq {
@@ -97,18 +138,12 @@ struct HttpClientReq {
 };
 
 
-/** @return
- *      Zero on success, negative values otherwise. Positive values are
- *      reserved. */
-int
-gateleenResclone_run( int argc , char**argv );
 
 
-int initEnv( struct EnvAndDeps* );
 
 
-struct Qntan_File**
-newFileStdlib( struct EnvAndDeps*deps, FILE*file, int takeOwnership, void(**unref)(struct Qntan_File**) );
+
+
 
 
 struct HttpClientReq_Hdr {
@@ -135,6 +170,14 @@ struct HttpClientReq_Opts {
 struct HttpClientReq** newHttpClientReq( struct HttpClientReq_Opts* );
 
 
+
+
+
+
+
+
+
+
 struct Qntan_JsonTreeDec** newJsonTreeParser(
 	struct EnvAndDeps*,
 	void(*onJsonResult)( CLOSURE, int err, void*structQntan_JsonTreeDec_JsonNode, uint64_t errOffs ),
@@ -143,19 +186,56 @@ struct Qntan_JsonTreeDec** newJsonTreeParser(
 );
 
 
+
+
+
+
+
+
+
+
 struct Qntan_MemArena** newArenaLinkedList( struct EnvAndDeps* );
+
+
+
+
+
+
+
+
 
 
 struct Qntan_TarEnc** newTarEnc( struct EnvAndDeps*, void(*)(CLOSURE,const char*,int,int,void(*)(int,CLOSURE),CLOSURE), CLOSURE);
 
 
+
+
+
+
+
+
+
+
 struct Qntan_TarDec** newTarDec( struct EnvAndDeps*, struct Qntan_File** );
+
+
+
+
+
+
+
+
 
 
 char const*strerrname(int);
 
 
-static void noopVoid(){}
+
+
+
+
+
+
 
 
 #endif /* INCGUARD_d16bcf26aca7174fb8aae7641c828007 */

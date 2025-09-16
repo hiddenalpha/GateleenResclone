@@ -1,9 +1,7 @@
 /* By using this work you agree to the terms and conditions in 'LICENSE.txt' */
 
-/* This Unit */
 #include "gateleen_resclone.h"
 
-/* System */
 #include <assert.h>
 #include <errno.h>
 #include <libgen.h>
@@ -11,6 +9,7 @@
 #include <regex.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #if __WIN32
@@ -18,13 +17,7 @@
 #	include <unistd.h>
 #endif
 
-/* Libs */
 #include <Garbage.h>
-
-/* Project */
-#include "array.h"
-#include "mime.h"
-#include "util_string.h"
 
 
 #if __WIN32
@@ -40,6 +33,8 @@
 #define FLG_isTls (1<<1)
 #define FLG_isFilterFull (1<<2)
 #define FLG_tarEntryIsEof (1<<3)
+#define FLG_isModePush (1<<4)
+#define FLG_isModePull (1<<5)
 
 
 #define WATCH_STACK_HEIGHT() do{ \
@@ -124,7 +119,6 @@ typedef struct Resclone {
 	int flg;
 	int argc; char**argv;
 	int exitCode;
-	enum OpMode mode;
 	/* the url specified in argv */
 	char *url;
 	/* url, but the parsed parts. */
@@ -222,17 +216,17 @@ parseArgs(
             printHelp();
             err = -1; goto fail;
         }else if( !strcmp(arg,"--pull") ){
-            if( resclone->mode ){
+            if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
                 fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--pull'.");
                 err = -1; goto fail;
             }
-            resclone->mode = MODE_FETCH;
+            resclone->flg |= FLG_isModePull;
         }else if( !strcmp(arg,"--push") ){
-            if( resclone->mode ){
+            if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
                 fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--push'.");
                 err = -1; goto fail;
             }
-            resclone->mode = MODE_PUSH;
+            resclone->flg |= FLG_isModePush;
         }else if( !strcmp(arg,"--url") ){
             if(!( arg=argv[++i]) ){
                 fprintf(stderr,"%s\n","EINVAL: Arg '--url' needs a value.");
@@ -271,7 +265,7 @@ parseArgs(
         }
     }
 
-    if( resclone->mode != MODE_PUSH && resclone->mode != MODE_FETCH ){
+    if(!( resclone->flg & (FLG_isModePull|FLG_isModePush) )){
         fprintf(stderr,"EINVAL: One of --push or --pull required.\n");
         err = -1; goto fail;
     }
@@ -283,7 +277,7 @@ parseArgs(
 
     int urlFromArgs_len = strlen(urlArg);
     if( ((urlArg)[urlFromArgs_len-1]) != '/' ){
-        uint_t url_len = urlFromArgs_len + 1;
+        unsigned url_len = urlFromArgs_len + 1;
         *url = malloc(url_len+1); /* TODO Mallocator */
         memcpy(*url, urlArg, urlFromArgs_len);
         (*url)[url_len-1] = '/';
@@ -293,14 +287,14 @@ parseArgs(
     }
 
     if( filterRaw ){
-        uint_t buf_len = strlen(filterRaw);
+        unsigned buf_len = strlen(filterRaw);
         char *buf = malloc(1 + buf_len + 2);
         buf[0] = '_'; // <- Match whole segment.
         memcpy(buf+1, filterRaw, buf_len+1);
         char *beg, *end;
         size_t filter_cap = 0;
         end = buf+1; // <- Initialize at begin for 1st iteration.
-        for( uint_t iSegm=0 ;; ++iSegm ){
+        for( unsigned iSegm=0 ;; ++iSegm ){
             for( beg=end ; *beg=='/' ; ++beg ); // <- Search for begin and ..
             for( end=beg ; *end!='/' && *end!='\0' ; ++end ); // <- .. end of current segment.
             char origBeg = beg[-1];
@@ -338,7 +332,7 @@ parseArgs(
         }
     }
 
-    if( resclone->mode == MODE_PUSH && *filter ){
+    if( (resclone->flg & FLG_isModePush) && *filter ){
         fprintf(stderr, "%s\n", "EINVAL: Filtering not supported for push mode.");
         err = -1; goto fail;
     }
@@ -346,7 +340,7 @@ parseArgs(
     return 0;
 fail:
     free(*url); *url = NULL;
-    for( uint_t i=0 ; i<*filter_cnt ; ++i ){
+    for( unsigned i=0 ; i<*filter_cnt ; ++i ){
         regfree(&(filter[0][i]));
     }
     *filter_cnt = 0;
@@ -1176,14 +1170,14 @@ run( CLOSURE _ ){
 	}{
 		assert(it - resclone->urlStorage < urlLen + 4);
 	}
-	if( resclone->mode == MODE_FETCH ){
+	if( resclone->flg & FLG_isModePull ){
 		Pull*const pull = &resclone->pull;
 		assert(pull->mAGIC == 0);
 		*pull = (struct Pull){
 			.mAGIC = Pull_mAGIC,
 		};
 		pullFn(0, (CLOSURE)pull);
-	}else if( resclone->mode == MODE_PUSH ){
+	}else if( resclone->flg & FLG_isModePush ){
 		Push*const push = &resclone->push;
 		assert(push->mAGIC == 0);
 		*push = (struct Push){
@@ -1198,12 +1192,12 @@ run( CLOSURE _ ){
 }
 
 
-int
+static inline int
 gateleenResclone_run( int argc, char**argv ){
 	#if !NDEBUG
 	int blubb;  stackframeofmain = (uintptr_t)&blubb;
 	#endif
-	REGISTER int err;
+	int err;
 	Resclone *resclone = &(Resclone){
 		.mAGIC = Resclone_mAGIC,
 		.argc = argc,
@@ -1211,22 +1205,46 @@ gateleenResclone_run( int argc, char**argv ){
 	};
 	err = initEnv(&resclone->deps);
 	if( err ){
-		LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto resolveWithErr;
+		LOGD("\t@ %s:%d\n", __FILE__, __LINE__); return !!err;
 	}
 	FN_EvLoop_enque(resclone->deps.env, run, (CLOSURE)resclone);
 	FN_EvLoop_runUntilDone(resclone->deps.env);
-	err = resclone->exitCode;
-resolveWithErr:
-	return err;
+	return resclone->exitCode;
 }
 
+
+#if _WIN32
+
+int _setmode(int,int);
+int
+main( int c, char**v ){
+	{char a=0;for(;!(a&10);){_setmode(a++,32768);}}
+	switch( WSAStartup(1, &(WSADATA){0}) ){
+	case 0: break;
+	case WSASYSNOTREADY    : assert(!"WSASYSNOTREADY"    ); break;
+	case WSAVERNOTSUPPORTED: assert(!"WSAVERNOTSUPPORTED"); break;
+	case WSAEINPROGRESS    : assert(!"WSAEINPROGRESS"    ); break;
+	case WSAEPROCLIM       : assert(!"WSAEPROCLIM"       ); break;
+	case WSAEFAULT         : assert(!"WSAEFAULT"         ); break;
+	default                : assert(!"ERROR"             ); break;
+	}
+	c = gateleenResclone_run(c, v);
+	switch( WSACleanup() ){
+	case 0: break;
+	case WSANOTINITIALISED : assert(!"WSANOTINITIALISED" ); break;
+	case WSAENETDOWN       : assert(!"WSAENETDOWN"       ); break;
+	case WSAEINPROGRESS    : assert(!"WSAEINPROGRESS"    ); break;
+	default                : assert(!"ERROR"             ); break;
+	}
+	return c;
+}
+
+#else
 
 int
-gateleenResclone_main( int argc, char**argv ){
-	LOGT("[TRACE] %s()\n", __func__);
-	int ret;
-	ret = gateleenResclone_run(argc, argv);
-	if( ret < 0 ) ret = -ret;
-	return (ret > 127) ? 1 : ret;
+main( int c, char**v ){
+	return gateleenResclone_run(c, v);
 }
+
+#endif
 

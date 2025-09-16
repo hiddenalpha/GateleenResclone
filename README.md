@@ -55,15 +55,14 @@ SUM:               16      231        121    1274
 ## Build
 
 ```
-./configure
 make clean
 make
 make install
 ```
 
-Just in case you've no build machine at hand. I've uploaded my qemu
-build machines alongside the released artifacts. Just look out for
-"qcow2" files at the github release page.
+Just in case you've no build machine at hand. I've uploaded my build
+machines alongside the released artifacts. Just look out for "qcow2"
+files alongside the artifacts.
 
 
 ## Dependencies
@@ -71,14 +70,14 @@ build machines alongside the released artifacts. Just look out for
 - libc
 - cJSON
 - libcurl
-- libarchive
 - pcre
+- libgarbage
 
 
 ## Dockerimage?
 
 Usually there's no need to have a dockerimage.
-But anyway, here your Dockerfile of desire:
+But anyway, for the insisting here a Dockerfile:
 
 ```Dockerfile
 FROM docker.io/alpine:3.21.2

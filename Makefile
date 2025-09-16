@@ -14,9 +14,9 @@ endif
 
 
 # For optimized builds, consider:  -02 -s -DNDEBUG=1
-CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough)) -DCURL_STATICLIB
+CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough)) -DCURL_STATICLIB
 
-LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -lgarbage -lcJSON -lcurl $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
+LDFLAGS= -Wl,--fatal-warnings,-dn,-lGateleenResclone,-lgarbage,-lcJSON,-lcurl $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
 
 ARCH=$(shell $(CC) -v 2>&1 | egrep '^Target: ' | sed -E 's,^Target: +(.*)$$,\1,')
 
@@ -34,14 +34,12 @@ clean:
 	rm -rf build dist
 
 compile:
-compile: build/obj/array/array.o
 compile: build/obj/common/commonbase.o
-compile: build/obj/entrypoint/gateleenResclone.o
-compile: build/obj/glue/curl.o
-compile: build/obj/garb_glue/garb_glue.o
-compile: build/obj/gateleen_resclone/gateleen_resclone.o
-compile: build/obj/mime/mime.o
-compile: build/obj/util_term/util_term.o
+compile: build/obj/entrypoint.o
+compile: build/obj/gateleen_resclone.o
+compile: build/obj/glue_curl.o
+compile: build/obj/glue_garb.o
+compile: build/obj/mime.o
 
 build/obj/%.o:
 build/obj/%.o: src/%.c
@@ -50,19 +48,17 @@ build/obj/%.o: src/%.c
 	$(CC) -c -o $@ $< $(CFLAGS) \
 
 build/bin/gateleen-resclone$(BINEXT):
-build/bin/gateleen-resclone$(BINEXT): build/obj/entrypoint/gateleenResclone.o
+build/bin/gateleen-resclone$(BINEXT): build/obj/entrypoint.o
 build/bin/gateleen-resclone$(BINEXT): build/lib/libGateleenResclone$(LIBSEXT)
 	@echo "[INFO ] Linking '$@'"
 	@mkdir -p $(shell dirname $@)
 	$(LD) -o $@ $^ $(LDFLAGS)
 
 build/lib/libGateleenResclone$(LIBSEXT):
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/array/array.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue/curl.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/garb_glue/garb_glue.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/gateleen_resclone/gateleen_resclone.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/mime/mime.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/util_term/util_term.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/gateleen_resclone.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue_curl.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue_garb.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/mime.o
 	@echo "[INFO ] Archive '$@'"
 	@mkdir -p $(shell dirname $@)
 	$(AR) -crs $@ $^
@@ -101,3 +97,4 @@ dist: clean link
 	@echo "[INFO ] DONE: Artifacts created and placed in 'dist'."
 	@echo
 	@echo See './dist/' for result.
+
