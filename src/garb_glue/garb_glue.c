@@ -19,17 +19,21 @@ struct Cls45A3C95F/* quickNDirtySocketMgr TODO makeMePretty */{
 };
 
 
-int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
-    deps->mallocator = Garbage_newMallocator();
-    assert(deps->mallocator);
-    deps->env = Garbage_newEnv(&(struct Garbage_Env_Opts){
-        .memBlockToUse = envMem,
-        .memBlockToUse_sz = envMem_sz,
-        .mallocator = deps->mallocator,
-    });
-    assert(deps->mallocator);
-	deps->mainArena = newArenaLinkedList(deps);
+int initEnv( EnvAndDeps*deps ){
 	{
+		deps->mallocator = Garbage_newMallocator();
+	}{
+		deps->evLoop = Garbage_newEvLoop(&(struct Garbage_EvLoop_Opts){
+			.mallocator = deps->mallocator,
+		});
+		assert(deps->mallocator);
+		/* TODO get rid of this OBSOLETE shit */
+		deps->env = Garbage_newEnv(&(struct Garbage_Env_Opts){
+			.evLoop = deps->evLoop,
+		});
+	}{
+		deps->mainArena = newArenaLinkedList(deps);
+	}{
 		struct Garbage_ThreadPool_Opts opts = {
 			.mallocator = deps->mallocator,
 			.numThrds = 2, /*TODO config via environ */
@@ -38,7 +42,7 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
 		opts.start(deps->ioWorker);
 		assert(deps->ioWorker);
 	}{
-		assert(deps->env);  assert(deps->mallocator);  assert(deps->ioWorker);
+		assert(deps->evLoop);  assert(deps->mallocator);  assert(deps->ioWorker);
 		struct Garbage_IoMultiplexer_Opts opts = {
 			.env = deps->env,
 			.mallocator = deps->mallocator,
@@ -47,7 +51,7 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
 		deps->ioMultiplexer = Garbage_newIoMultiplexer(&opts);
 		opts.start(deps->ioMultiplexer);
 	}
-    assert(deps->env);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
+    assert(deps->evLoop);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
     assert(deps->ioWorker);
 	/**/
     assert(deps->mallocator);  assert(deps->ioWorker);
@@ -119,6 +123,7 @@ newTarEnc(
 ){
 	assert(deps->mallocator);
 	return Garbage_newTarEnc(&(struct Garbage_TarEnc_Opts){
+		.evLoop = deps->evLoop,
 		.mallocator = deps->mallocator,
 		.cls = onChunkArg,
 		.onChunk = onChunk,

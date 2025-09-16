@@ -73,7 +73,8 @@ enum OpMode {
 
 
 struct EnvAndDeps {
-	struct Garbage_Env **env;
+	struct Qntan_EvLoop **evLoop;
+	struct Garbage_Env **env; /* <- TODO OBSOLETE! */
 	struct Qntan_Mallocator **mallocator;
 	struct Qntan_MemArena **mainArena;
 	struct Qntan_IoMux **ioMultiplexer;
@@ -103,7 +104,7 @@ int
 gateleenResclone_run( int argc , char**argv );
 
 
-int initEnv( struct EnvAndDeps*, void*, int );
+int initEnv( struct EnvAndDeps* );
 
 
 struct Qntan_File**

@@ -11,7 +11,7 @@
 #define FLG_isDstClosed (1<<0)
 
 
-#define HttpClientReqImpl_mAGIC 0x727D3347
+#define HttpClientReqImpl_mAGIC 0xA1C07C0E
 #define DEFINE_HttpClientReqImpl(D, S) struct HttpClientReqImpl*const D=(void*)S;do{ \
 	assert(D); assert(D->mAGIC == HttpClientReqImpl_mAGIC); }while(0)
 typedef struct HttpClientReqImpl {
@@ -56,7 +56,7 @@ static void
 Resclone_HttpClientReq_write(
 	struct HttpClientReq**_,
 	char const*buf,  int len,  int flgs,
-	void (*onDone)(int ret,CLOSURE),  CLOSURE onDoneArg
+	void (*onWriteDone)(int ret,CLOSURE),  CLOSURE onWriteDoneArg
 ){
 	LOGT("[TRACE] @ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 	assert(len >= 0);  assert(flgs == 0 || flgs == 4);
@@ -73,7 +73,7 @@ Resclone_HttpClientReq_write(
 			void *tmp = FN_Mallocator_realloc(
 				this->mallocator, this->reqBody, this->reqBody_cap, newSz);
 			if( !tmp ){
-				assert(errno > 0); onDone(-errno, onDoneArg); return; }
+				assert(errno > 0); onWriteDone(-errno, onWriteDoneArg); return; }
 			this->reqBody = tmp;
 			this->reqBody_cap = newSz;
 		}
@@ -87,18 +87,17 @@ Resclone_HttpClientReq_write(
 		if( err != CURLE_OK ){
 			LOGE("curl_easy_perform(): %s\n\t@ %s:%d (%s)\n",
 				curl_easy_strerror(err), __FILE__, __LINE__, __func__);
-			onDone(-EIO, onDoneArg);
+			onWriteDone(-EIO, onWriteDoneArg);
 			return;
 		}
 		if( this->onRspBodyChunk )
 			this->onRspBodyChunk(this->cbCls, NULL, 0, 4);
 	}
-	onDone(len, onDoneArg);
-	if( this->awaitResponseCompleteFn ){
-		void (*fn)(int,CLOSURE) = this->awaitResponseCompleteFn;
-		this->awaitResponseCompleteFn = NULL;
+	onWriteDone(len, onWriteDoneArg);
+	void (*fn)(int,CLOSURE) = this->awaitResponseCompleteFn;
+	this->awaitResponseCompleteFn = NULL;
+	if( fn )
 		fn(0, this->awaitResponseCompleteArg);
-	}
 }
 
 
@@ -173,7 +172,7 @@ newHttpClientReq( struct HttpClientReq_Opts*opts ){
 	if( !this )
 		goto fail01;
 	*this = (struct HttpClientReqImpl){
-		.mAGIC = 0x727D3347,
+		.mAGIC = HttpClientReqImpl_mAGIC,
 		.vt = &vtRescloneHttpClientReqImpl,
 		.mallocator = opts->deps->mallocator,
 		.cbCls = opts->cls,

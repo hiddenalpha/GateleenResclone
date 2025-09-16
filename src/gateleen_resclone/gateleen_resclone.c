@@ -145,8 +145,6 @@ typedef struct Resclone {
 	/**/
 	struct EnvAndDeps deps;
 	/**/
-	uintptr_t envMem[64];
-	/**/
 } Resclone;
 
 
@@ -1211,7 +1209,7 @@ gateleenResclone_run( int argc, char**argv ){
 		.argc = argc,
 		.argv = argv,
 	};
-	err = initEnv(&resclone->deps, resclone->envMem, sizeof resclone->envMem);
+	err = initEnv(&resclone->deps);
 	if( err ){
 		LOGD("\t@ %s:%d\n", __FILE__, __LINE__); goto resolveWithErr;
 	}
