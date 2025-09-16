@@ -18,19 +18,26 @@ Commandline utility to clone subtrees from gateleen instances.
     Root node of remote tree.
 
 --filter-part <path-filter>
-    Regex pattern applied as predicate to the path starting after the path
-    specified in '--url'. Each path segment will be handled as its
-    individual pattern. If there are longer paths to process, they will be
-    accepted, as long they at least start-with specified filter.
+    Regex pattern applied as predicate to the path starting after
+    the path specified in '--url'. Each path segment will be
+    handled as its individual pattern. If there are longer paths to
+    process, they will be accepted, as long they at least
+    start-with specified filter.
     Example:  /foo/[0-9]+/bar
 
 --filter-full <path-filter>
-    Nearly same as '--filter-part'. But paths with more segments than the
-    pattern, will be rejected.
+    Nearly same as '--filter-part'. But paths with more segments
+    than the pattern, will be rejected.
 
 --file <path.tar>
     (optional) Path to the archive file to read/write. Defaults to
-    stdin/stdout if ommitted.
+    stdin/stdout if ommitted. Special value "-" means to use
+    stdin/stdout, even a tty got detected.
+
+--print-path
+    Print path for every entry actually taken. This does NOT
+    include intermediates like collections or those which responded
+    non-200 codes.
 ```
 
 
@@ -38,17 +45,15 @@ Commandline utility to clone subtrees from gateleen instances.
 
 ```
 github.com/AlDanial/cloc
--------------------------------------------------
-Language        files    blank    comment    code
--------------------------------------------------
-C                   6      146         79    1064
-make                1       15          2     101
-C/C++ Header        7       44         35      55
-Markdown            1       24          0      53
-Bourne Shell        1        2          5       1
--------------------------------------------------
-SUM:               16      231        121    1274
--------------------------------------------------
+---------------------------------------------
+Language       files   blank   comment   code
+---------------------------------------------
+C                  5     134        58   1719
+C/C++ Header       1     132        12     97
+make               1      15         5     80
+---------------------------------------------
+SUM:               7     281        75   1896
+---------------------------------------------
 ```
 
 
@@ -68,9 +73,9 @@ files alongside the artifacts.
 ## Dependencies
 
 - libc
-- cJSON
+- libcJSON
 - libcurl
-- pcre
+- libpcre
 - libgarbage
 
 
