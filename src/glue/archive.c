@@ -27,7 +27,7 @@
 	assert(this->mAGIC == TarDecByLibarchive_mAGIC); \
 
 #define THIS_TarEnc(CLS) TarEnc*this = container_of(CLS, TarEnc, pimpl); \
-	assert(CLS != NULL); \
+	assert(CLS); \
 	assert(this->mAGIC == TarEncByLibarchive_mAGIC); \
 
 
@@ -37,12 +37,13 @@ typedef  struct TarDecByLibarchive  TarDec;
 
 struct Cls476A9D42/* TarEnc_write() */{
 	unsigned mAGIC;
+	int coroState;
 	int err;
 	TarEnc *this;
 	void *buf;
 	int buf_len;
-	void (*onDone)(int,void*);
-	void *onDoneArg;
+	void (*onDone)(int,CLOSURE);
+	CLOSURE onDoneArg;
 };
 
 
@@ -50,8 +51,8 @@ struct Cls50735D7E/* TarEnc_closeSnk() */{
 	unsigned mAGIC;
 	int err;
 	TarEnc *this;
-	void (*onDone)(int,void*);
-	void *onDoneArg;
+	void (*onDone)(int,CLOSURE);
+	CLOSURE onDoneArg;
 };
 
 
@@ -59,8 +60,8 @@ struct ClsC04C3362/* TarEnc_nextEntry() */{
 	unsigned mAGIC;
 	int err;
 	TarEnc *this;
-	void (*onDone)(int,void*);
-	void *onDoneArg;
+	void (*onDone)(int,CLOSURE);
+	CLOSURE onDoneArg;
 };
 
 
@@ -70,8 +71,8 @@ struct TarDecByLibarchive {
 	struct archive *archive;
 	struct archive_entry *currEntry;
 	/**/
-	struct Garbage_TarDec *pimpl;
-	struct Garbage_Mallocator **mallocator;
+	struct Qntan_TarDec *pimpl;
+	struct Qntan_Mallocator **mallocator;
 };
 
 
@@ -85,11 +86,11 @@ struct TarEncByLibarchive {
 	struct archive_entry *entry;
 	MUTX mutx;
 	COND condChunkRetval;
-	struct Garbage_TarEnc *pimpl;
+	struct Qntan_TarEnc *pimpl;
 	/**/
 	struct Garbage_Env **env;
-	struct Garbage_Mallocator **mallocator;
-	struct Garbage_ThreadPool **ioWorker;
+	struct Qntan_Mallocator **mallocator;
+	struct Qntan_Executor **ioWorker;
 	/**/
 	union {
 		struct Cls476A9D42 cls476A9D42;
@@ -97,16 +98,16 @@ struct TarEncByLibarchive {
 		struct ClsC04C3362 clsC04C3362;
 	};
 	/**/
-	void(*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*);
-	void *onChunkArg;
+	void(*onChunk)(CLOSURE,const char*,int,int,void(*)(int,CLOSURE),CLOSURE);
+	CLOSURE onChunkArg;
 };
 
 
 static void
 nextLibarchiveHdr(
-	struct Garbage_TarDec**cls_,
-	void(*onDone)(int,struct Garbage_TarDecHdr*,void*),
-	void*onDoneArg
+	struct Qntan_TarDec**cls_,
+	void(*onDone)(int,struct Qntan_TarDec_Hdr*,CLOSURE),
+	CLOSURE onDoneArg
 ){
 	int err;
 	THIS_TarDec(cls_);
@@ -128,7 +129,7 @@ nextLibarchiveHdr(
 	if( err == ARCHIVE_OK || err == ARCHIVE_WARN ){
 		char const*name = archive_entry_pathname(this->currEntry);
 		int ftype = archive_entry_filetype(this->currEntry);
-		struct Garbage_TarDecHdr hdr = {
+		struct Qntan_TarDec_Hdr hdr = {
 			.path = name,
 			.path_len = strlen(name),
 			.nBodyOctets = archive_entry_size(this->currEntry),
@@ -150,11 +151,11 @@ nextLibarchiveHdr(
 
 static void
 f5EOnzAu082WtWmRB(
-	struct Garbage_TarDec**cls_,
+	struct Qntan_TarDec**cls_,
 	void*buf,
 	int buf_cap,
-	void(*onDone)(void*,int,int,void*),
-	void*onDoneArg
+	void(*onDone)(void*,int,int,CLOSURE),
+	CLOSURE onDoneArg
 ){
 	int err;
 	THIS_TarDec(cls_);
@@ -173,24 +174,24 @@ f5EOnzAu082WtWmRB(
 
 
 void
-delTarDec( struct Garbage_TarDec**cls_ ){
+delTarDec( struct Qntan_TarDec**cls_ ){
 	THIS_TarDec(cls_);
 	if( this->currEntry ){ /*TODO*/ }
 	if( this->archive ){ /*TODO*/ }
-	(*this->mallocator)->reallocBlocking(this->mallocator, this, sizeof*this, 0);
+	FN_Mallocator_realloc(this->mallocator, this, sizeof*this, 0);
 }
 
 
-struct Garbage_TarDec**
+struct Qntan_TarDec**
 newTarDec( struct EnvAndDeps*deps, char const*archivePath )
 {
 	int err;
-	static struct Garbage_TarDec vt = {
+	static struct Qntan_TarDec vt = {
 		.nextHdr = nextLibarchiveHdr,
 		.readBody = f5EOnzAu082WtWmRB,
 	};
 	assert(2*sizeof(void*) == sizeof vt);
-	TarDec*const this = (*deps->mallocator)->reallocBlocking(deps->mallocator, NULL, 0, sizeof*this);
+	TarDec*const this = FN_Mallocator_realloc(deps->mallocator, NULL, 0, sizeof*this);
 	if( !this ){ return NULL; }
 	*this = (TarDec){
 		.mAGIC = TarDecByLibarchive_mAGIC,
@@ -225,14 +226,14 @@ endFn:
 
 
 static void
-fF0H4lmzEVJgxuvFv( void*cls_ ){
-	struct ClsC04C3362*const cls = cls_;  assert(cls->mAGIC == 0xC04C3362);
+fF0H4lmzEVJgxuvFv( CLOSURE cls_ ){
+	struct ClsC04C3362*const cls = (void*)cls_;  assert(cls->mAGIC == 0xC04C3362);
 	cls->mAGIC = 0;
 	cls->onDone(cls->err, cls->onDoneArg);
 }
 static void
-fazUoq6l4CA1YQBUo( void*cls_ ){
-	struct ClsC04C3362*const cls = cls_;  assert(cls->mAGIC == 0xC04C3362);
+fazUoq6l4CA1YQBUo( CLOSURE cls_ ){
+	struct ClsC04C3362*const cls = (void*)cls_;  assert(cls->mAGIC == 0xC04C3362);
 	cls->err = archive_write_header(cls->this->archive, cls->this->entry);
 	if( cls->err == ARCHIVE_RETRY || cls->err == ARCHIVE_FATAL ){
 		LOGE("%s: archive_write_header(): %s\n\t@ %s:%d\n",
@@ -249,15 +250,15 @@ fazUoq6l4CA1YQBUo( void*cls_ ){
 	}else{
 		assert(cls->err == ARCHIVE_OK);
 	}
-	(*cls->this->env)->enque(cls->this->env, fF0H4lmzEVJgxuvFv, cls);
+	(*cls->this->env)->enque(cls->this->env, fF0H4lmzEVJgxuvFv, QNTAN_CLS(cls));
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
 static void
 TarEnc_nextEntry(
-	struct Garbage_TarEnc**cls_,
-	struct Garbage_TarEncHdr*hdr,
-	void(*onDone)(int,void*),
-	void* onDoneArg
+	struct Qntan_TarEnc**cls_,
+	struct Qntan_TarEnc_Hdr*hdr,
+	void(*onDone)(int,CLOSURE),
+	CLOSURE onDoneArg
 ){
 	THIS_TarEnc(cls_);
 	if( !this->entry ){
@@ -280,37 +281,53 @@ TarEnc_nextEntry(
 	};
 	this->remainBodyLen = hdr->nBodyOctets;
 	(*this->env)->addAwaitToken(this->env);
-	(*this->ioWorker)->enque(this->ioWorker, fazUoq6l4CA1YQBUo, cls);
+	(*this->ioWorker)->enque(this->ioWorker, fazUoq6l4CA1YQBUo, QNTAN_CLS(cls));
 }
 
 
 static void
-f6Oyecu5X8O7rT879( void*cls_ ){
-	struct Cls476A9D42*const cls = cls_; assert(cls->mAGIC == 0x476A9D42);
-	cls->mAGIC = 0;
-	cls->onDone(cls->err, cls->onDoneArg);
-}
-static void
-fVIW2DcjiyVzh2FpT( void*cls_ ){
-	struct Cls476A9D42*const cls = cls_; assert(cls->mAGIC == 0x476A9D42);
-	cls->err = archive_write_data(cls->this->archive, cls->buf, cls->buf_len);
-	if( cls->err < 0 ){
-		cls->err = archive_errno(cls->this->archive);
-		LOGD("%s: archive_write_data(): %s\n\t@ %s:%d\n", strerrname(-cls->err),
-			archive_error_string(cls->this->archive), __FILE__, __LINE__);
-	}
-	(*cls->this->env)->enque(cls->this->env, f6Oyecu5X8O7rT879, cls);
-	(*cls->this->env)->delAwaitToken(cls->this->env);
+f3vckCr8KLx6dKhmu( CLOSURE cls_ ){
+	struct Cls476A9D42*const cls = (void*)cls_; assert(cls->mAGIC == 0x476A9D42);
+	#define CORO_STATE cls->coroState
+	enum { begin=0, s4KyZrpe041PJDBvP, sMzwUMyec9mFefNig, };
+	switch( CORO_STATE ){case begin:{
+		/* switch to another thread. */
+		CORO_STATE = s4KyZrpe041PJDBvP;
+		(*cls->this->env)->addAwaitToken(cls->this->env);
+		(*cls->this->ioWorker)->enque(cls->this->ioWorker, f3vckCr8KLx6dKhmu, cls_);
+		return;
+	}case s4KyZrpe041PJDBvP:{
+		/* now happily do blocking-IO on ioWorker thread. */
+		cls->err = archive_write_data(cls->this->archive, cls->buf, cls->buf_len);
+		if( cls->err < 0 ){
+			cls->err = archive_errno(cls->this->archive);
+			LOGD("%s: archive_write_data(): %s\n\t@ %s:%d\n", strerrname(-cls->err),
+				archive_error_string(cls->this->archive), __FILE__, __LINE__);
+		}
+		/* done with blocking stuff. Switch bach to EvLoop thread */
+		CORO_STATE = sMzwUMyec9mFefNig;
+		(*cls->this->env)->enque(cls->this->env, f3vckCr8KLx6dKhmu, QNTAN_CLS(cls));
+		(*cls->this->env)->delAwaitToken(cls->this->env);
+		return;
+	}case sMzwUMyec9mFefNig:{
+		/* welcome back on EvLoop thread. Ready to call back. */
+		cls->mAGIC = 0;
+		cls->onDone(cls->err, cls->onDoneArg);
+		return;
+	}}
+	LOGD("assert(s != %d)\n\t@ %s:%d (%s)\n", CORO_STATE, __FILE__, __LINE__, __func__); assert(0);
+	#undef CORO_STATE
 }
 static void
 TarEnc_write(
-	struct Garbage_TarEnc**cls_,
+	struct Qntan_TarEnc**cls_,
 	void*buf,
-	int buf_len,
-	void(*onDone)(int,void*),
-	void* onDoneArg
+	int buf_len, int flgs,
+	void(*onDone)(int,CLOSURE),
+	CLOSURE onDoneArg
 ){
 	THIS_TarEnc(cls_);
+	assert(flgs == 0);
 	assert(buf_len >= 0);
 	if( (uint_least64_t)buf_len > this->remainBodyLen ){
 		LOGD("assert(%d <= %lu)\n\t@ %s:%d\n",
@@ -327,20 +344,19 @@ TarEnc_write(
 		.onDone = onDone,
 		.onDoneArg = onDoneArg,
 	};
-	(*this->env)->addAwaitToken(this->env);
-	(*this->ioWorker)->enque(this->ioWorker, fVIW2DcjiyVzh2FpT, cls);
+	f3vckCr8KLx6dKhmu((CLOSURE)cls);
 }
 
 
 static void
-fHFTMFjhZkOmtQoAq( void*cls_ ){
-	struct Cls50735D7E*const cls = cls_; assert(cls->mAGIC == 0x50735D7E);
+fHFTMFjhZkOmtQoAq( CLOSURE cls_ ){
+	struct Cls50735D7E*const cls = (void*)cls_; assert(cls->mAGIC == 0x50735D7E);
 	cls->mAGIC = 0;
 	cls->onDone(cls->err, cls->onDoneArg);
 }
 static void
-fqRmD2uoLc5rOoCY1( void*cls_ ){
-	struct Cls50735D7E*const cls = cls_; assert(cls->mAGIC == 0x50735D7E);
+fqRmD2uoLc5rOoCY1( CLOSURE cls_ ){
+	struct Cls50735D7E*const cls = (void*)cls_; assert(cls->mAGIC == 0x50735D7E);
 	cls->err = archive_write_close(cls->this->archive);
 	if( cls->err != ARCHIVE_OK ){
 		LOGD("%s: archive_write_close(): %s\n\t@ %s:%d\n",
@@ -348,14 +364,14 @@ fqRmD2uoLc5rOoCY1( void*cls_ ){
 			archive_error_string(cls->this->archive),
 			__FILE__, __LINE__);
 	}
-	(*cls->this->env)->enque(cls->this->env, fHFTMFjhZkOmtQoAq, cls);
+	(*cls->this->env)->enque(cls->this->env, fHFTMFjhZkOmtQoAq, QNTAN_CLS(cls));
 	(*cls->this->env)->delAwaitToken(cls->this->env);
 }
 static void
 TarEnc_closeSnk(
-	struct Garbage_TarEnc**cls_,
-	void(*onDone)(int,void*),
-	void* onDoneArg
+	struct Qntan_TarEnc**cls_,
+	void(*onDone)(int,CLOSURE),
+	CLOSURE onDoneArg
 ){
 	THIS_TarEnc(cls_);
 	struct Cls50735D7E*const cls = &this->cls50735D7E;
@@ -367,21 +383,21 @@ TarEnc_closeSnk(
 		.onDoneArg = onDoneArg,
 	};
 	(*this->env)->addAwaitToken(this->env);
-	(*this->ioWorker)->enque(this->ioWorker, fqRmD2uoLc5rOoCY1, cls);
+	(*this->ioWorker)->enque(this->ioWorker, fqRmD2uoLc5rOoCY1, QNTAN_CLS(cls));
 }
 
 
-static char const* TarEnc_getLastErrorStr( struct Garbage_TarEnc**cls_ ){
+static char const* TarEnc_getLastErrorStr( struct Qntan_TarEnc**cls_ ){
 	THIS_TarEnc(cls_);
 	return archive_error_string(this->archive);
 }
 
 
-void delTarEnc( struct Garbage_TarEnc**cls_ ){
+void delTarEnc( struct Qntan_TarEnc**cls_ ){
 	THIS_TarEnc(cls_);
 	/* TODO release more */
 	if( this->archive ) archive_write_free(this->archive);
-	(*this->mallocator)->reallocBlocking(this->mallocator, this, sizeof*this, 0);
+	FN_Mallocator_realloc(this->mallocator, this, sizeof*this, 0);
 }
 
 
@@ -393,7 +409,7 @@ onArchiveWrOpen( struct archive*_, void*cls_ ){
 }
 
 
-static void fJahUpiznu1s0g8bE( int err, void*cls_ ){
+static void fJahUpiznu1s0g8bE( int err, CLOSURE cls_ ){
 	THIS_TarEnc(cls_);
 	MUTX_LOCK(&this->mutx);
 	this->writeRetval = err;
@@ -408,7 +424,7 @@ onArchiveWrWrite( struct archive*_, void*cls_, void const*buf, size_t buf_len ){
 	(void)_;
 	THIS_TarEnc(cls_);
 	this->flg &= ~FLG_writeRetvalIsAvail;
-	this->onChunk(this->onChunkArg, buf, buf_len, 0, fJahUpiznu1s0g8bE, cls_);
+	this->onChunk(this->onChunkArg, buf, buf_len, 0, fJahUpiznu1s0g8bE, (CLOSURE)cls_);
 	MUTX_LOCK(&this->mutx);
 	while(!( this->flg & FLG_writeRetvalIsAvail )){
 		COND_WAIT(&this->condChunkRetval, &this->mutx);
@@ -418,7 +434,7 @@ onArchiveWrWrite( struct archive*_, void*cls_, void const*buf, size_t buf_len ){
 }
 
 static void
-f1MIepBCyqxIfQcUf( int err, void*cls_ ){
+f1MIepBCyqxIfQcUf( int err, CLOSURE cls_ ){
 	THIS_TarEnc(cls_);
 	MUTX_LOCK(&this->mutx);
 	this->closeRetval = err;
@@ -432,7 +448,7 @@ onArchiveWrClose( struct archive*_, void*cls_ ){
 	LOGT("[TRACE] %s()\n", __func__);
 	THIS_TarEnc(cls_);
 	this->flg &= ~FLG_closeRetvalIsAvail;
-	this->onChunk(this->onChunkArg, NULL, 0, 4, f1MIepBCyqxIfQcUf, cls_);
+	this->onChunk(this->onChunkArg, NULL, 0, 4, f1MIepBCyqxIfQcUf, (CLOSURE)cls_);
 	MUTX_LOCK(&this->mutx);
 	while(!( this->flg & FLG_closeRetvalIsAvail ))
 		COND_WAIT(&this->condChunkRetval, &this->mutx);
@@ -441,24 +457,23 @@ onArchiveWrClose( struct archive*_, void*cls_ ){
 }
 
 
-struct Garbage_TarEnc**
+struct Qntan_TarEnc**
 newTarEnc(
 	struct EnvAndDeps*deps,
-	void(*onChunk)(void*,const char*,int,int,void(*)(int,void*),void*),
-	void*onChunkArg
+	void(*onChunk)(CLOSURE,const char*,int,int,void(*)(int,CLOSURE b),CLOSURE b),
+	CLOSURE onChunkArg
 ){
 	assert(deps->mallocator);
 	assert(deps->ioWorker);
 	assert(onChunk);
 	int err;
-	static struct Garbage_TarEnc vt = {
+	static struct Qntan_TarEnc vt = {
 		.nextEntry = TarEnc_nextEntry,
 		.write = TarEnc_write,
-		.closeSnk = TarEnc_closeSnk,
 		.getLastErrorStr = TarEnc_getLastErrorStr,
 	};
 	assert(4*sizeof(void*) == sizeof vt);
-	TarEnc*const this = (*deps->mallocator)->reallocBlocking(deps->mallocator, NULL, 0, sizeof*this);
+	TarEnc*const this = FN_Mallocator_realloc(deps->mallocator, NULL, 0, sizeof*this);
 	if( !this ){ return NULL; }
 	*this = (TarEnc){
 		.mAGIC = TarEncByLibarchive_mAGIC,

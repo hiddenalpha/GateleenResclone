@@ -12,9 +12,12 @@ ifndef PROJECT_VERSION
 	PROJECT_VERSION := $(shell git describe | sed 's;^v;;')
 endif
 
-CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term $(WINSHITINCLUDE)
 
-LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -lgarbage -lcJSON $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
+CFLAGS= -Os --std=c99 -Wall -Wextra -Werror -fmax-errors=3 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough))
+# For optimized builds, consider:
+# CFLAGS= -02 -s -DNDEBUG=1 --std=c99 -DPROJECT_VERSION=$(PROJECT_VERSION) -Iinclude -Isrc/array -Isrc/common -Isrc/gateleen_resclone -Isrc/mime -Isrc/util_string -Isrc/util_term -Iimport/include $(WINSHITINCLUDE) -DFALL=__attribute__((fallthrough))
+
+LDFLAGS= -Wl,--fatal-warnings -Wl,-dn -lGateleenResclone -lgarbage -lcJSON -lcurl $(WINSHITLIBS) -Wl,-dy -Lbuild/lib
 
 ARCH=$(shell $(CC) -v 2>&1 | egrep '^Target: ' | sed -E 's,^Target: +(.*)$$,\1,')
 
@@ -35,7 +38,7 @@ compile:
 compile: build/obj/array/array.o
 compile: build/obj/common/commonbase.o
 compile: build/obj/entrypoint/gateleenResclone.o
-compile: build/obj/glue/archive.o
+compile: build/obj/glue/curl.o
 compile: build/obj/garb_glue/garb_glue.o
 compile: build/obj/gateleen_resclone/gateleen_resclone.o
 compile: build/obj/mime/mime.o
@@ -56,7 +59,7 @@ build/bin/gateleen-resclone$(BINEXT): build/lib/libGateleenResclone$(LIBSEXT)
 
 build/lib/libGateleenResclone$(LIBSEXT):
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/array/array.o
-build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue/archive.o
+build/lib/libGateleenResclone$(LIBSEXT): build/obj/glue/curl.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/garb_glue/garb_glue.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/gateleen_resclone/gateleen_resclone.o
 build/lib/libGateleenResclone$(LIBSEXT): build/obj/mime/mime.o

@@ -29,128 +29,74 @@ int initEnv( EnvAndDeps*deps, void*envMem, int envMem_sz ){
     });
     assert(deps->mallocator);
 	deps->mainArena = newArenaLinkedList(deps);
-    deps->ioWorker = Garbage_newThreadPool(&(struct Garbage_ThreadPool_Opts){
-        .mallocator = deps->mallocator,
-        .numThrds = 2, /*TODO config via environ */
-    });
-    assert(deps->env);  assert(deps->mallocator);  assert(deps->ioWorker);
-    deps->ioMultiplexer = Garbage_newIoMultiplexer(deps->env, &(struct Garbage_IoMultiplexer_Opts){
-        .mallocator = deps->mallocator,
-        .ioWorker = deps->ioWorker,
-    });
+	{
+		struct Garbage_ThreadPool_Opts opts = {
+			.mallocator = deps->mallocator,
+			.numThrds = 2, /*TODO config via environ */
+		};
+		deps->ioWorker = Garbage_newThreadPool(&opts);
+		opts.start(deps->ioWorker);
+		assert(deps->ioWorker);
+	}{
+		assert(deps->env);  assert(deps->mallocator);  assert(deps->ioWorker);
+		struct Garbage_IoMultiplexer_Opts opts = {
+			.env = deps->env,
+			.mallocator = deps->mallocator,
+			.ioWorker = deps->ioWorker,
+		};
+		deps->ioMultiplexer = Garbage_newIoMultiplexer(&opts);
+		opts.start(deps->ioMultiplexer);
+	}
     assert(deps->env);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
     assert(deps->ioWorker);
-    deps->socketMgr = Garbage_newSocketMgr(deps->env, &(struct Garbage_SocketMgr_Opts){
-        .mallocator = deps->mallocator,
-        .ioMultiplexer = deps->ioMultiplexer,
-        .blockingIoWorker = deps->ioWorker,
-    });
+	/**/
     assert(deps->mallocator);  assert(deps->ioWorker);
     deps->networker = Garbage_newNetworker(&(struct Garbage_Networker_Opts){
         .mallocator = deps->mallocator,
         .ioWorker = deps->ioWorker,
     });
 	/**/
-	assert(deps->mallocator);
-	assert(!deps->connectionPool);
-	deps->connectionPool = Garbage_newPoolConnection(&(struct Garbage_PoolConnection_Opts){
-		.mallocator = deps->mallocator,
-		.socketMgrPlain = deps->socketMgr,
-		//.socketMgrTls = (*deps->tlsClient)->asSocketMgr(deps->tlsClient),
-	});
-	assert(deps->connectionPool);
-	/**/
-	assert(deps->socketMgr);
-	assert(deps->ioWorker);
 	assert(deps->networker);
-	/**/
-	(*deps->ioMultiplexer)->start(deps->ioMultiplexer);
-	(*deps->ioWorker)->start(deps->ioWorker);
 	/**/
 	return 0;
 }
 
 
-struct Garbage_MemoryArena** newArenaLinkedList( EnvAndDeps*deps ){
-	struct Garbage_ArenaLinkedList **impl;
-	impl = Garbage_newArenaLinkedList(&(struct Garbage_ArenaLinkedList_Opts){
+struct Qntan_MemArena**
+newArenaLinkedList( EnvAndDeps*deps ){
+	return Garbage_newArenaLinkedList(&(struct Garbage_ArenaLinkedList_Opts){
 		.mallocator = deps->mallocator,
 		.blkSz = 64*1024*1024,
 	});
-	return (*impl)->asMemoryArena(impl);
 }
 
 
-/* TODO move this IMPL to where IMPLs belong, away from GLUE. */
-static void socketAcquire(
-	void*cls_, int flg, void*sockaddr, int sockaddr_len,
-	void(*onDone)(int err,struct Garbage_Socket**sock,Garbage_Closure arg), Garbage_Closure onDoneArg
+struct Qntan_File**
+newFileStdlib(
+	struct EnvAndDeps*deps, FILE*file, int takeOwnership, void(**unref)(struct Qntan_File**)
 ){
-	struct Cls45A3C95F*const cls = cls_;  assert(cls->mAGIC == 0x45A3C95F);
-	(*cls->deps->connectionPool)->sockAcquire(cls->deps->connectionPool,
-		sockaddr, sockaddr_len, flg, cls->peerHostname, onDone, onDoneArg);
-}
-
-
-/* TODO move this IMPL to where IMPLs belong, away from GLUE. */
-static void releaseSocketOfWhateverImpl( void*cls_, struct Garbage_Socket**sock, int flg ){
-	struct Cls45A3C95F*const cls = cls_;  assert(cls->mAGIC == 0x45A3C95F);
-	assert(flg == 0 || flg == 1);
-	(*cls->deps->connectionPool)->sockRelease(cls->deps->connectionPool, sock, flg);
-}
-
-
-struct Garbage_HttpClientReq** newHttpClientReq(
-    EnvAndDeps*deps,
-    char const*mthd,
-    char const*host,
-    uint_least16_t port,
-    int useTls,
-    char const*url,
-    struct Garbage_HttpMsg_Hdr *hdrs,
-    int hdrs_cnt,
-    struct Garbage_HttpClientReq_Mentor*mentor,
-    void*mentorCls
-){
-	static struct Cls45A3C95F clsSock_, *clsSock = &clsSock_;
-	assert(sizeof clsSock->peerHostname > strlen(host));
-	*clsSock = (struct Cls45A3C95F){
-		.mAGIC = 0x45A3C95F,
-		.deps = deps,
-	};
-	int const a = sizeof clsSock->peerHostname, b = strlen(host);
-	memcpy(clsSock->peerHostname, host, (a<b)?a:b);
-	return Garbage_newHttpClientReq(&(struct Garbage_HttpClientReq_Opts){
-		.env = deps->env,
-		.mentor = mentor,
-		.mentorCtx = mentorCls,
+	struct Garbage_FileStdlib_Opts opts = {
 		.mallocator = deps->mallocator,
-		.ioWorker = deps->ioWorker,
-		.networker = deps->networker,
-		/**/
-		.socketCtx = clsSock,
-		.socketAcquire = socketAcquire,
-		.socketRelease = releaseSocketOfWhateverImpl,
-		/**/
-		.mthd = mthd,
-		.host = host,
-		.url = url,
-		.port = port,
-		.hdrs = hdrs,
-		.hdrs_cnt = hdrs_cnt,
-	});
+		.ioMux = deps->ioMultiplexer,
+		.file = (uintptr_t)file,
+		.takeOwnership = takeOwnership,
+	};
+	struct Qntan_File **ret = Garbage_newFileStdlib(&opts);
+	*unref = opts.unref;  assert(opts.unref);
+	return ret;
 }
 
 
-struct Garbage_JsonTreeParser**
+struct Qntan_JsonTreeDec**
 newJsonTreeParser(
 	EnvAndDeps*deps,
-	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
-	void(*onParseError)( void*, uintptr_t errOff ),
-	void*onJsonResultCls
+	void(*onJsonResult)( CLOSURE, int err, void*theJsonTreeParser_JsonNode, uint64_t errOff ),
+	void (**unref)(struct Qntan_JsonTreeDec**),
+	CLOSURE onJsonResultCls
 ){
-	return Garbage_newJsonTreeParser(&(struct Garbage_JsonTreeParser_Opts){
+	struct Garbage_JsonTreeDec_Opts opts = {
 		.env = deps->env,
+		.mallocator = deps->mallocator,
 		/*
 		 * TODO pass-in from args an arena, WITH CORRECT LIFETIME . */
 		.scratchArena = deps->mainArena,
@@ -158,7 +104,33 @@ newJsonTreeParser(
 		.cpuWorker = deps->ioWorker, /*TODO fix mismatch*/
 		.cls = onJsonResultCls,
 		.onJsonResult = (void*)onJsonResult, /*TODO fuck cast to deadh*/
-		.onError = onParseError,
+	};
+	struct Qntan_JsonTreeDec **ret = Garbage_newJsonTreeDec(&opts);
+	*unref = opts.unref;
+	return ret;
+}
+
+
+struct Qntan_TarEnc**
+newTarEnc(
+	struct EnvAndDeps*deps,
+	void(*onChunk)(CLOSURE,const char*,int,int,void(*onDone)(int,CLOSURE),CLOSURE),
+	CLOSURE onChunkArg
+){
+	assert(deps->mallocator);
+	return Garbage_newTarEnc(&(struct Garbage_TarEnc_Opts){
+		.mallocator = deps->mallocator,
+		.cls = onChunkArg,
+		.onChunk = onChunk,
+	});
+}
+
+
+struct Qntan_TarDec**
+newTarDec( struct EnvAndDeps*deps, struct Qntan_File**archive ){
+	return Garbage_newTarDec(&(struct Garbage_TarDec_Opts){
+		.mallocator = deps->mallocator,
+		.archive = archive,
 	});
 }
 

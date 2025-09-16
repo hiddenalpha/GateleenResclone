@@ -9,9 +9,12 @@
 #include <regex.h>
 
 #include <stdint.h>
+#include <stdio.h>
 #include <sys/types.h>
 
 #include <Garbage.h>
+
+#define CLOSURE uintptr_t
 
 
 #define LOGF(...) fprintf(stderr, __VA_ARGS__)
@@ -24,25 +27,38 @@
 /* [Source](https://git.hiddenalpha.ch/UnspecifiedGarbage.git/tree/src/main/c/common/snippets.c) */
 #define container_of(P, T, M) \
      ((T*)( ((size_t)P) - ((size_t)((ptrdiff_t)&((T*)0)->M - (ptrdiff_t)0) )))
-
 #if _WIN32
-#	define FALL __attribute__ ((fallthrough)) /* for fucking annoying compilers */
 #	define FUCKWINDOOFLONG (long unsigned)
 #else
-#	define FALL do{}while(0)
 #	define FUCKWINDOOFLONG /*no BS needed on sane systems*/
 #endif
+#ifndef FALL
+#	define FALL do{}while(0)
+#endif
 
+#if NDEBUG /* <- aka release mode */
+#	define REGISTER register
+#else
+#	define REGISTER
+#endif
 
-#define Mallocator_realloc(A, B, C, D) (*A)->reallocBlocking(A, B, C, D)
-#define FN_ThreadPool_enque(A, B, C) (*A)->enque(A, B, C)
-#define FN_HttpClientReq_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
+#define MIN(A, B) ((((A) < (B)) * (A)) + (((A) >= (B)) * (B)))
+
+#define FN_EvLoop_delAwaitToken(A, ...) (*A)->delAwaitToken(A, __VA_ARGS__)
+#define FN_EvLoop_enque(A, ...) (*A)->enque(A, __VA_ARGS__)
+#define FN_EvLoop_runUntilDone(A) (*A)->runUntilDone(A)
 #define FN_HttpClientReq_pause(A) (*A)->pause(A)
 #define FN_HttpClientReq_resume(A) (*A)->resume(A)
-#define FN_Env_enque(A, B, C) (*A)->enque(A, B, C)
-#define FN_Env_runUntilDone(A) (*A)->runUntilDone(A)
-#define FN_JsonTreeParser_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
-#define FN_TarEnc_nextEntry(A, B) (*A)->nextEntry(A, B)
+#define FN_HttpClientReq_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
+#define FN_JsonTreeDec_write(A, B, C, D, E, F) (*A)->write(A, B, C, D, E, F)
+#define FN_Mallocator_realloc(A, ...) (*A)->realloc(A, __VA_ARGS__)
+#define FN_TarDec_nextHdr(A, ...) (*A)->nextHdr(A, __VA_ARGS__)
+#define FN_TarDec_readBody(A, ...) (*A)->readBody(A, __VA_ARGS__)
+#define FN_TarEnc_nextEntry(A, ...) (*A)->nextEntry(A, __VA_ARGS__)
+#define FN_TarEnc_write(A, ...) (*A)->write(A, __VA_ARGS__)
+#define FN_TarEnc_getLastErrorStr(A) (*A)->getLastErrorStr(A)
+#define FN_ThreadPool_enque(A, B, C) (*A)->enque(A, B, C)
+
 
 
 /** Operation mode. */
@@ -56,13 +72,25 @@ enum OpMode {
 
 struct EnvAndDeps {
 	struct Garbage_Env **env;
-	struct Garbage_Mallocator **mallocator;
-	struct Garbage_MemoryArena **mainArena;
-	struct Garbage_SocketMgr **socketMgr;
-	struct Garbage_IoMultiplexer **ioMultiplexer;
-	struct Garbage_ThreadPool **ioWorker;
-	struct Garbage_PoolConnection **connectionPool;
-	struct Garbage_Networker **networker;
+	struct Qntan_Mallocator **mallocator;
+	struct Qntan_MemArena **mainArena;
+	struct Qntan_IoMux **ioMultiplexer;
+	struct Qntan_Executor **ioWorker;
+	struct Qntan_Networker **networker;
+};
+
+
+struct HttpClientReq {
+	/**/
+	void (*write)( struct HttpClientReq**, char const*buf, int len, int flgs,
+		void (*onDone)(int ret,CLOSURE), CLOSURE);
+	/**/
+	void (*awaitResponseComplete)( struct HttpClientReq**, void(*onDone)(int,CLOSURE), CLOSURE );
+	/**/
+	void (*pause)( struct HttpClientReq** );
+	/**/
+	void (*resume)( struct HttpClientReq** );
+	/**/
 };
 
 
@@ -76,34 +104,49 @@ gateleenResclone_run( int argc , char**argv );
 int initEnv( struct EnvAndDeps*, void*, int );
 
 
-struct Garbage_HttpClientReq** newHttpClientReq(
-    struct EnvAndDeps*,
-    char const*mthd,
-    char const*host,
-    uint_least16_t port,
-    int useTls,
-    char const*url,
-    struct Garbage_HttpMsg_Hdr*,
-    int hdrs_cnt,
-    struct Garbage_HttpClientReq_Mentor*,
-    void*mentorCls
-);
+struct Qntan_File**
+newFileStdlib( struct EnvAndDeps*deps, FILE*file, int takeOwnership, void(**unref)(struct Qntan_File**) );
 
 
-struct Garbage_JsonTreeParser** newJsonTreeParser(
+struct HttpClientReq_Hdr {
+	char *key, *val;
+};
+struct HttpClientReq_Opts {
+	struct EnvAndDeps *deps;
+	char const *mthd;
+	char const *host;
+	uint16_t port;
+	int useTls;
+	char const *url;
+	struct HttpClientReq_Hdr *hdrs;
+	int hdrs_cnt;
+	/**/
+	CLOSURE cls;
+	void (*onRspHdr)( CLOSURE, char*proto, int code, char*phrase,
+		struct HttpClientReq_Hdr*hdrs, int hdrs_cnt );
+	void (*onRspBodyChunk)( CLOSURE, char*buf, int len, int flgs );
+	/*
+	 * OUTPUT PARAMETER! Will be set by callee. */
+	void (*unref)( struct HttpClientReq** );
+};
+struct HttpClientReq** newHttpClientReq( struct HttpClientReq_Opts* );
+
+
+struct Qntan_JsonTreeDec** newJsonTreeParser(
 	struct EnvAndDeps*,
-	void(*onJsonResult)( void*, int err, void*theJsonTreeParser_JsonNode ),
-	void(*onParseError)( void*, uintptr_t ),
-	void*onJsonResultCls
+	void(*onJsonResult)( CLOSURE, int err, void*structQntan_JsonTreeDec_JsonNode, uint64_t errOffs ),
+	void (**unref)(struct Qntan_JsonTreeDec**),
+	CLOSURE onJsonResultCls
 );
 
-struct Garbage_MemoryArena** newArenaLinkedList( struct EnvAndDeps* );
+
+struct Qntan_MemArena** newArenaLinkedList( struct EnvAndDeps* );
 
 
-struct Garbage_TarEnc** newTarEnc( struct EnvAndDeps*, void(*)(void*,const char*,int,int,void(*)(int,void*),void*), void*);
+struct Qntan_TarEnc** newTarEnc( struct EnvAndDeps*, void(*)(CLOSURE,const char*,int,int,void(*)(int,CLOSURE),CLOSURE), CLOSURE);
 
 
-struct Garbage_TarDec** newTarDec( struct EnvAndDeps*, char const*archivePath );
+struct Qntan_TarDec** newTarDec( struct EnvAndDeps*, struct Qntan_File** );
 
 
 char const*strerrname(int);
