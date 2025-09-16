@@ -9,7 +9,7 @@
 /**
  * Returns ptr to statically allocated mimetype.
  */
-const char* fileExtToMime( const char*ext );
+char* fileExtToMime( const char*ext );
 
 
 #endif /* INCGUARD_569e6cc3cc7a72f544dd00fb071f0a17 */

@@ -20,6 +20,8 @@ typedef struct HttpClientReqImpl {
 	struct HttpClientReq *vt;
 	struct Qntan_Mallocator **mallocator;
 	CURL *curl;
+	struct curl_slist *reqHdrs;
+	char hdrsBuf[1024];
 	/**/
 	char *reqBody; size_t reqBody_cap,  reqBody_beg, reqBody_end;
 	/**/
@@ -143,6 +145,9 @@ Resclone_HttpClientReq_unref( struct HttpClientReq**_ ){
 	LOGT("[TRACE] @ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 	DEFINE_HttpClientReqImpl(this, container_of(_, HttpClientReqImpl, vt));
 	this->mAGIC = 0;
+	if( this->reqHdrs ){
+		curl_slist_free_all(this->reqHdrs);  this->reqHdrs = NULL;
+	}
 	/* TODO, there's only ONE global 'curl' instance for now. MUST NOT
 	 * free yet, but MUST somehow. */
 	//curl_easy_cleanup(this->curl);
@@ -163,7 +168,7 @@ newHttpClientReq( struct HttpClientReq_Opts*opts ){
 		.pause = Resclone_HttpClientReq_pause,
 		.resume = Resclone_HttpClientReq_resume,
 	}; assert(4*sizeof(void*) == sizeof vtRescloneHttpClientReqImpl);
-	register int err;
+	REGISTER int err;
 	HttpClientReqImpl*const this = FN_Mallocator_realloc(opts->deps->mallocator, NULL, 0, sizeof*this);
 	if( !this )
 		goto fail01;
@@ -193,13 +198,28 @@ newHttpClientReq( struct HttpClientReq_Opts*opts ){
 		LOGE("ENOBUFS: url\n\t@ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 		goto fail02;
 	}{
-		int const nok = 0
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_URL, url))
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 0L))
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, onCurlDataComesIn))
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, this))
-			;
-		if( nok ){
+		assert(!this->reqHdrs);
+		char *it = this->hdrsBuf, *end = this->hdrsBuf + sizeof this->hdrsBuf;
+		for( err = 0 ; err < opts->hdrs_cnt ; ++err ){
+			#define HDR (opts->hdrs + err)
+			int const key_len = strlen(HDR->key);
+			int const val_len = strlen(HDR->val);
+			char const*const hdr_beg = it;
+			assert(it + key_len + val_len + 3 < end); /*TODO*/
+			memcpy(it, HDR->key, key_len); it += key_len;
+			memcpy(it, ": ", 2); it += 2;
+			memcpy(it, HDR->val, val_len); it += val_len;
+			*it++ = '\0';
+			this->reqHdrs = curl_slist_append(this->reqHdrs, hdr_beg);
+			#undef HDR
+		}
+	}{
+		if( CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_URL, url))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->reqHdrs))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 0L))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, onCurlDataComesIn))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, this))
+		){
 			LOGE("curl_easy_setopt(): %s\n\t@ %s:%d (%s)\n",
 				curl_easy_strerror(err), __FILE__, __LINE__, __func__);
 			goto fail02;

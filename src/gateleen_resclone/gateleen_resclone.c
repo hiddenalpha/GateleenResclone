@@ -1029,6 +1029,11 @@ putFile(
 		assert(!"TODO_wbOzO0i6GtlEdZo7 PathTooLong");
 	if( resclone->flg & FLG_printPath )
 		LOGI("PUT %.*s\n", err, path);
+	char *mime = "application/json";
+	assert(path[0] == '/');
+	for( err = strlen(path)-1 ; path[err] != '/' && path[err] != '.' ; --err );
+	if( path[err] == '.' )
+		mime = fileExtToMime(path + err + 1);
 	struct HttpClientReq_Opts opts = {
 		.deps = &resclone->deps,
 		.mthd = "PUT",
@@ -1037,6 +1042,10 @@ putFile(
 		.useTls = !!(resclone->flg & FLG_isTls),
 		.url = path,
 		.cls = (CLOSURE)put,
+		.hdrs = (struct HttpClientReq_Hdr[]){
+			{ .key = "Content-Type", .val = mime, },
+		},
+		.hdrs_cnt = 0 + !!mime,
 		.onRspHdr = onUploadFileResponseHeader,
 		.onRspBodyChunk = onUploadFileResponseBody,
 	};

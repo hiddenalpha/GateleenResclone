@@ -14,6 +14,8 @@
 
 #include <Garbage.h>
 
+#include "mime.h"
+
 #define CLOSURE uintptr_t
 
 

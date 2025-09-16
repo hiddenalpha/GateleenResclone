@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 
-const char* fileExtToMime( const char*ext )
+char* fileExtToMime( const char*ext )
 {
     if( ext[0]=='7' ){
         if( ext[1]=='z' ){
