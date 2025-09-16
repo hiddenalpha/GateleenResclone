@@ -2,24 +2,12 @@
 #include "gateleen_resclone.h"
 
 #include <assert.h>
-#include <stdio.h>
-#include <string.h>
 
 #include <Garbage_Bootstrap.h>
 
 
-typedef  struct EnvAndDeps  EnvAndDeps;
-
-
-/* TODO get rid of this shit! */
-struct Cls45A3C95F/* quickNDirtySocketMgr TODO makeMePretty */{
-	unsigned mAGIC;
-	char peerHostname[128];
-	EnvAndDeps *deps;
-};
-
-
-int initEnv( EnvAndDeps*deps ){
+int
+initEnv( struct EnvAndDeps*deps ){
 	{
 		deps->mallocator = Garbage_newMallocator();
 	}{
@@ -50,24 +38,19 @@ int initEnv( EnvAndDeps*deps ){
 		};
 		deps->ioMultiplexer = Garbage_newIoMultiplexer(&opts);
 		opts.start(deps->ioMultiplexer);
+	}{
+		deps->networker = Garbage_newNetworker(&(struct Garbage_Networker_Opts){
+			.mallocator = deps->mallocator,
+			.ioWorker = deps->ioWorker,
+		});
+		assert(deps->networker);
 	}
-    assert(deps->evLoop);  assert(deps->mallocator);  assert(deps->ioMultiplexer);
-    assert(deps->ioWorker);
-	/**/
-    assert(deps->mallocator);  assert(deps->ioWorker);
-    deps->networker = Garbage_newNetworker(&(struct Garbage_Networker_Opts){
-        .mallocator = deps->mallocator,
-        .ioWorker = deps->ioWorker,
-    });
-	/**/
-	assert(deps->networker);
-	/**/
 	return 0;
 }
 
 
 struct Qntan_MemArena**
-newArenaLinkedList( EnvAndDeps*deps ){
+newArenaLinkedList( struct EnvAndDeps*deps ){
 	return Garbage_newArenaLinkedList(&(struct Garbage_ArenaLinkedList_Opts){
 		.mallocator = deps->mallocator,
 		.blkSz = 64*1024*1024,
@@ -93,7 +76,7 @@ newFileStdlib(
 
 struct Qntan_JsonTreeDec**
 newJsonTreeParser(
-	EnvAndDeps*deps,
+	struct EnvAndDeps*deps,
 	void(*onJsonResult)( CLOSURE, int err, void*theJsonTreeParser_JsonNode, uint64_t errOff ),
 	void (**unref)(struct Qntan_JsonTreeDec**),
 	CLOSURE onJsonResultCls

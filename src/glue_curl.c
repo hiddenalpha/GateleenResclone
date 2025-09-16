@@ -3,7 +3,6 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <stdio.h>
 #include <string.h>
 
 #include <curl/curl.h>
@@ -22,32 +21,27 @@ typedef struct HttpClientReqImpl {
 	CURL *curl;
 	struct curl_slist *reqHdrs;
 	char hdrsBuf[1024];
-	/**/
-	char *reqBody; size_t reqBody_cap,  reqBody_beg, reqBody_end;
-	/**/
+	char *reqBody;  size_t reqBody_cap, reqBody_beg, reqBody_end;
 	void (*awaitResponseCompleteFn)(int,CLOSURE);  CLOSURE awaitResponseCompleteArg;
-	/**/
 	void (*onRspHdr)(CLOSURE,char*,int,char*,struct HttpClientReq_Hdr*,int);
 	void (*onRspBodyChunk)( CLOSURE, char*buf, int len, int flgs );
 	CLOSURE cbCls;
-	/**/
 } HttpClientReqImpl;
 
 
 static size_t
 onCurlDataComesIn( char*buf, size_t sz, size_t cnt, void*this_ ){
-	register int err;
 	DEFINE_HttpClientReqImpl(this, this_);
 	long rspCode;
-	err = curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &rspCode);
-	if( this->onRspHdr ){
-		this->onRspHdr(this->cbCls,
-			"TODO_IoryqQnVgddtZvte", rspCode, "TODO_KmRkKGPmBNdq2YiA", NULL, 0);
-	}
+	int err = curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &rspCode);
+	/*  ^^^-- TODO why unused? */
+	if( this->onRspHdr )
+		this->onRspHdr(this->cbCls, "TODO_IorqVdZte", rspCode, "TODO_mKPBdq2YiA", NULL, 0);
 	if( this->onRspBodyChunk && sz > 0 && cnt > 0 ){
 		assert(1.00001f*sz*cnt < INT_MAX);
 		this->onRspBodyChunk(this->cbCls, buf, sz * cnt, 0);
 	}
+	assert(1.00001f * sz * cnt < SIZE_MAX);
 	return sz * cnt;
 }
 
@@ -60,7 +54,7 @@ Resclone_HttpClientReq_write(
 ){
 	LOGT("[TRACE] @ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 	assert(len >= 0);  assert(flgs == 0 || flgs == 4);
-	register int err;
+	int err;
 	DEFINE_HttpClientReqImpl(this, container_of(_, HttpClientReqImpl, vt));
 	if( (len > 0 || flgs & 4) && !this->curl ){
 		assert(!this->curl);
@@ -167,7 +161,7 @@ newHttpClientReq( struct HttpClientReq_Opts*opts ){
 		.pause = Resclone_HttpClientReq_pause,
 		.resume = Resclone_HttpClientReq_resume,
 	}; assert(4*sizeof(void*) == sizeof vtRescloneHttpClientReqImpl);
-	REGISTER int err;
+	int err;
 	HttpClientReqImpl*const this = FN_Mallocator_realloc(opts->deps->mallocator, NULL, 0, sizeof*this);
 	if( !this )
 		goto fail01;
@@ -212,31 +206,27 @@ newHttpClientReq( struct HttpClientReq_Opts*opts ){
 			this->reqHdrs = curl_slist_append(this->reqHdrs, hdr_beg);
 			#undef HDR
 		}
-	}{
-		if( CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_URL, url))
-		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->reqHdrs))
-		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 0L))
-		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, onCurlDataComesIn))
-		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, this))
+	}
+	if( CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_URL, url))
+	||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->reqHdrs))
+	||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 0L))
+	||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, onCurlDataComesIn))
+	||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, this))
+	){
+		LOGE("curl_easy_setopt(): %s\n\t@ %s:%d (%s)\n",
+			curl_easy_strerror(err), __FILE__, __LINE__, __func__);
+		goto fail02;
+	}
+	if( strcmp(opts->mthd, "GET") ){
+		if( CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_UPLOAD, 1L))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_READFUNCTION, onUploadChunkRequested))
+		||  CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_READDATA, this))
 		){
 			LOGE("curl_easy_setopt(): %s\n\t@ %s:%d (%s)\n",
 				curl_easy_strerror(err), __FILE__, __LINE__, __func__);
 			goto fail02;
 		}
 	}
-	if( strcmp(opts->mthd, "GET") ){
-		int const nok = 0
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_UPLOAD, 1L))
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_READFUNCTION, onUploadChunkRequested))
-			|| CURLE_OK != (err=curl_easy_setopt(this->curl, CURLOPT_READDATA, this))
-			;
-		if( nok ){
-			LOGE("curl_easy_setopt(): %s\n\t@ %s:%d (%s)\n",
-				curl_easy_strerror(err), __FILE__, __LINE__, __func__);
-			goto fail02;
-		}
-	}
-	/**/
 	opts->unref = Resclone_HttpClientReq_unref;
 	return &this->vt;
 fail02:

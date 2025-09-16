@@ -4,11 +4,6 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <libgen.h>
-#include <limits.h>
-#include <regex.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -16,8 +11,6 @@
 #else
 #	include <unistd.h>
 #endif
-
-#include <Garbage.h>
 
 
 #if __WIN32
@@ -29,18 +22,13 @@
 #   define PRIuz "%lu"
 #endif
 
+
 #define FLG_printPath (1<<0)
 #define FLG_isTls (1<<1)
 #define FLG_isFilterFull (1<<2)
 #define FLG_tarEntryIsEof (1<<3)
 #define FLG_isModePush (1<<4)
 #define FLG_isModePull (1<<5)
-
-
-#define WATCH_STACK_HEIGHT() do{ \
-	int mystackframe; \
-	/* TODO TODO TODO TODO assert(stackframeofmain - ((uintptr_t)&mystackframe) < 256*1024);*/ \
-}while(0)
 
 
 #define DloadNode_mAGIC 0xBC9DF815
@@ -62,7 +50,6 @@ typedef struct DloadNode {
 	int iChild;
 	/**/
 	void (*onDone)(int,CLOSURE);  CLOSURE onDoneArg;
-	/**/
 } DloadNode;
 
 
@@ -81,7 +68,7 @@ typedef struct Put {
 	struct HttpClientReq **req;  void (*req_unref)(struct HttpClientReq**);
 	int httpRspCode;
 	int buf_cap, buf_len;
-	char buf[65000];
+	char buf[64512];
 } Put;
 
 
@@ -91,7 +78,6 @@ typedef struct Put {
 typedef struct Push {
 	unsigned mAGIC;
 	int coroState;
-	/**/
 	struct Resclone *resclone;
 	struct Qntan_Mallocator **mallocator;
 	struct Qntan_File **file;  void(*file_unref)(struct Qntan_File**);
@@ -106,7 +92,6 @@ typedef struct Push {
 typedef struct Pull {
 	unsigned mAGIC;
 	int coroState;
-	/**/
 	struct DloadNode rootDloadNode;
 } Pull;
 
@@ -138,7 +123,6 @@ typedef struct Resclone {
 	struct Qntan_TarEnc **tar;
 	/**/
 	struct EnvAndDeps deps;
-	/**/
 } Resclone;
 
 
@@ -146,9 +130,6 @@ static void downloadDirNode( int, CLOSURE, void(*)(int,CLOSURE), CLOSURE );
 static void downloadFileNode( int, CLOSURE, void(*)(int,CLOSURE), CLOSURE );
 static void putFile_kontinue( int, Qntan_Cls );
 static void pushTar( int, CLOSURE );
-
-
-static uintptr_t stackframeofmain;
 
 
 static void
@@ -200,152 +181,152 @@ parseArgs(
 ){
 	int argc = resclone->argc;  resclone->argc = 0;
 	char **argv = resclone->argv; resclone->argv = NULL;
-    ssize_t err;
-    char *filterRaw = NULL;
+	int err;
+	char *filterRaw = NULL;
 	char *urlArg = NULL;
-    if( argc == -1 ){ // -1 indicates the call to free our resources. So simply jump
-        err = 0; goto fail;    // to 'fail' because that has the same effect.
-    }
-    *url = NULL;
-    *filter = NULL;
-    *filter_cnt = 0;
+	if( argc == -1 ){ // -1 indicates the call to free our resources. So simply jump
+		err = 0; goto fail;    // to 'fail' because that has the same effect.
+	}
+	*url = NULL;
+	*filter = NULL;
+	*filter_cnt = 0;
 
-    for( int i=1 ; i<argc ; ++i ){
-        char *arg = argv[i];
-        if( !strcmp(arg,"--help") ){
-            printHelp();
-            err = -1; goto fail;
-        }else if( !strcmp(arg,"--pull") ){
-            if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
-                fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--pull'.");
-                err = -1; goto fail;
-            }
-            resclone->flg |= FLG_isModePull;
-        }else if( !strcmp(arg,"--push") ){
-            if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
-                fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--push'.");
-                err = -1; goto fail;
-            }
-            resclone->flg |= FLG_isModePush;
-        }else if( !strcmp(arg,"--url") ){
-            if(!( arg=argv[++i]) ){
-                fprintf(stderr,"%s\n","EINVAL: Arg '--url' needs a value.");
-                err = -1; goto fail;
-            }
-            urlArg = arg;
-        }else if( !strcmp(arg,"--filter-full") ){
-            if(!( arg=argv[++i] )){
-                fprintf(stderr,"%s\n","EINVAL: Arg '--filter-full' needs a value.");
-                err = -1; goto fail; }
-            if( filterRaw ){
-                fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-full' because a filter is already set.");
-                err=-1; goto fail; }
-            filterRaw = arg;
+	for( int i=1 ; i<argc ; ++i ){
+		char *arg = argv[i];
+		if( !strcmp(arg,"--help") ){
+			printHelp();
+			err = -1; goto fail;
+		}else if( !strcmp(arg,"--pull") ){
+			if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
+				fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--pull'.");
+				err = -1; goto fail;
+			}
+			resclone->flg |= FLG_isModePull;
+		}else if( !strcmp(arg,"--push") ){
+			if( resclone->flg & (FLG_isModePull|FLG_isModePush) ){
+				fprintf(stderr,"%s\n","EINVAL: Mode already specified. Won't set '--push'.");
+				err = -1; goto fail;
+			}
+			resclone->flg |= FLG_isModePush;
+		}else if( !strcmp(arg,"--url") ){
+			if(!( arg=argv[++i]) ){
+				fprintf(stderr,"%s\n","EINVAL: Arg '--url' needs a value.");
+				err = -1; goto fail;
+			}
+			urlArg = arg;
+		}else if( !strcmp(arg,"--filter-full") ){
+			if(!( arg=argv[++i] )){
+				fprintf(stderr,"%s\n","EINVAL: Arg '--filter-full' needs a value.");
+				err = -1; goto fail; }
+			if( filterRaw ){
+				fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-full' because a filter is already set.");
+				err=-1; goto fail; }
+			filterRaw = arg;
 			resclone->flg |= FLG_isFilterFull;
-        }else if( !strcmp(arg,"--filter-part") ){
-            if(!( arg=argv[++i] )){
-                fprintf(stderr,"%s\n","EINVAL: Arg '--filter-part' needs a value.");
-                err = -1; goto fail; }
-            if( filterRaw ){
-                fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-part' because a filter is already set.");
-                err = -1; goto fail; }
-            filterRaw = arg;
+		}else if( !strcmp(arg,"--filter-part") ){
+			if(!( arg=argv[++i] )){
+				fprintf(stderr,"%s\n","EINVAL: Arg '--filter-part' needs a value.");
+				err = -1; goto fail; }
+			if( filterRaw ){
+				fprintf(stderr,"%s\n","EINVAL: Cannot use '--filter-part' because a filter is already set.");
+				err = -1; goto fail; }
+			filterRaw = arg;
 			resclone->flg &= ~FLG_isFilterFull;
-        }else if( !strcmp(arg,"--file") ){
-            if(!( arg=argv[++i]) ){
-                fprintf(stderr,"%s\n","EINVAL: Arg '--file' needs a value.");
-                err = -1; goto fail;
-            }
-            resclone->file = arg;
-        }else if( !strcmp(arg,"--print-path") ){
-            resclone->flg |= FLG_printPath;
-        }else{
-            fprintf(stderr,"%s%s\n", "EINVAL: Unknown arg ",arg);
-            err = -1; goto fail;
-        }
-    }
+		}else if( !strcmp(arg,"--file") ){
+			if(!( arg=argv[++i]) ){
+				fprintf(stderr,"%s\n","EINVAL: Arg '--file' needs a value.");
+				err = -1; goto fail;
+			}
+			resclone->file = arg;
+		}else if( !strcmp(arg,"--print-path") ){
+			resclone->flg |= FLG_printPath;
+		}else{
+			fprintf(stderr,"%s%s\n", "EINVAL: Unknown arg ",arg);
+			err = -1; goto fail;
+		}
+	}
 
-    if(!( resclone->flg & (FLG_isModePull|FLG_isModePush) )){
-        fprintf(stderr,"EINVAL: One of --push or --pull required.\n");
-        err = -1; goto fail;
-    }
+	if(!( resclone->flg & (FLG_isModePull|FLG_isModePush) )){
+		fprintf(stderr,"EINVAL: One of --push or --pull required.\n");
+		err = -1; goto fail;
+	}
 
-    if( !urlArg ){
-        fprintf(stderr,"EINVAL: Arg --url missing.\n");
-        err = -1; goto fail;
-    }
+	if( !urlArg ){
+		fprintf(stderr,"EINVAL: Arg --url missing.\n");
+		err = -1; goto fail;
+	}
 
-    int urlFromArgs_len = strlen(urlArg);
-    if( ((urlArg)[urlFromArgs_len-1]) != '/' ){
-        unsigned url_len = urlFromArgs_len + 1;
-        *url = malloc(url_len+1); /* TODO Mallocator */
-        memcpy(*url, urlArg, urlFromArgs_len);
-        (*url)[url_len-1] = '/';
-        (*url)[url_len] = '\0';
-    }else{
-        *url = strdup(urlArg); /* TODO Mallocator */
-    }
+	int urlFromArgs_len = strlen(urlArg);
+	if( ((urlArg)[urlFromArgs_len-1]) != '/' ){
+		unsigned url_len = urlFromArgs_len + 1;
+		*url = malloc(url_len+1); /* TODO Mallocator */
+		memcpy(*url, urlArg, urlFromArgs_len);
+		(*url)[url_len-1] = '/';
+		(*url)[url_len] = '\0';
+	}else{
+		*url = strdup(urlArg); /* TODO Mallocator */
+	}
 
-    if( filterRaw ){
-        unsigned buf_len = strlen(filterRaw);
-        char *buf = malloc(1 + buf_len + 2);
-        buf[0] = '_'; // <- Match whole segment.
-        memcpy(buf+1, filterRaw, buf_len+1);
-        char *beg, *end;
-        size_t filter_cap = 0;
-        end = buf+1; // <- Initialize at begin for 1st iteration.
-        for( unsigned iSegm=0 ;; ++iSegm ){
-            for( beg=end ; *beg=='/' ; ++beg ); // <- Search for begin and ..
-            for( end=beg ; *end!='/' && *end!='\0' ; ++end ); // <- .. end of current segment.
-            char origBeg = beg[-1];
-            char origSep = *end;
-            char origNext = end[1];
-            beg[-1] = '^'; // <- Add 'match-start' so we MUST match whole segment.
-            *end = '$';    // <- Add 'match-end' so we must match whole segment.
-            end[1] = '\0'; // <- Temporary terminate to compile segment only.
-            if( iSegm >= filter_cap ){
-                filter_cap += 8;
-                void *tmp = realloc(*filter, filter_cap*sizeof**filter);
-                fprintf(stderr, "%s%u%s%p\n",
-                    "[DEBUG] realloc(NULL, ", (unsigned)(filter_cap*sizeof**filter)," ) -> ", tmp);
-                if( tmp == NULL ){
-                    fprintf(stderr, "realloc(" PRIuz "): %s\n", filter_cap*sizeof**filter, strerror(errno));
-                    err = -ENOMEM; goto fail; }
-                *filter = tmp;
-            }
-            fprintf(stderr, "%s%d%s%s%s\n", "[DEBUG] filter[", iSegm, "] -> '", beg-1, "'");
-            err = regcomp((*filter)+iSegm, beg-1, REG_EXTENDED);
-            if( err ){
-                fprintf(stderr, "regcomp(%s): " PRIuz "\n", beg, err);
-                err = -1; goto fail; }
-            /* Restore surrounding stuff. */
-            beg[-1] = origBeg;
-            *end = origSep; /* <- Restore tmp 'end-of-match' ($) */
-            end[1] = origNext; /* <- Restore tmp termination. */
-            if( *end == '\0' ){ /* EOF */
-                *filter_cnt = iSegm +1;
-                *filter = realloc(*filter, *filter_cnt *sizeof(**filter)); /* Trim result. */
-                assert(*filter != NULL);
-                free(buf); buf = NULL;
-                break;
-            }
-        }
-    }
+	if( filterRaw ){
+		unsigned buf_len = strlen(filterRaw);
+		char *buf = malloc(1 + buf_len + 2);
+		buf[0] = '_'; // <- Match whole segment.
+		memcpy(buf+1, filterRaw, buf_len+1);
+		char *beg, *end;
+		size_t filter_cap = 0;
+		end = buf+1; // <- Initialize at begin for 1st iteration.
+		for( unsigned iSegm=0 ;; ++iSegm ){
+			for( beg=end ; *beg=='/' ; ++beg ); // <- Search for begin and ..
+			for( end=beg ; *end!='/' && *end!='\0' ; ++end ); // <- .. end of current segment.
+			char origBeg = beg[-1];
+			char origSep = *end;
+			char origNext = end[1];
+			beg[-1] = '^'; // <- Add 'match-start' so we MUST match whole segment.
+			*end = '$';    // <- Add 'match-end' so we must match whole segment.
+			end[1] = '\0'; // <- Temporary terminate to compile segment only.
+			if( iSegm >= filter_cap ){
+				filter_cap += 8;
+				void *tmp = realloc(*filter, filter_cap*sizeof**filter);
+				fprintf(stderr, "%s%u%s%p\n",
+					"[DEBUG] realloc(NULL, ", (unsigned)(filter_cap*sizeof**filter)," ) -> ", tmp);
+				if( tmp == NULL ){
+					fprintf(stderr, "realloc(" PRIuz "): %s\n", filter_cap*sizeof**filter, strerror(errno));
+					err = -ENOMEM; goto fail; }
+				*filter = tmp;
+			}
+			fprintf(stderr, "%s%d%s%s%s\n", "[DEBUG] filter[", iSegm, "] -> '", beg-1, "'");
+			err = regcomp((*filter)+iSegm, beg-1, REG_EXTENDED);
+			if( err ){
+				fprintf(stderr, "regcomp(%s): %d\n", beg, err);
+				err = -1; goto fail; }
+			/* Restore surrounding stuff. */
+			beg[-1] = origBeg;
+			*end = origSep; /* <- Restore tmp 'end-of-match' ($) */
+			end[1] = origNext; /* <- Restore tmp termination. */
+			if( *end == '\0' ){ /* EOF */
+				*filter_cnt = iSegm +1;
+				*filter = realloc(*filter, *filter_cnt *sizeof(**filter)); /* Trim result. */
+				assert(*filter != NULL);
+				free(buf); buf = NULL;
+				break;
+			}
+		}
+	}
 
-    if( (resclone->flg & FLG_isModePush) && *filter ){
-        fprintf(stderr, "%s\n", "EINVAL: Filtering not supported for push mode.");
-        err = -1; goto fail;
-    }
+	if( (resclone->flg & FLG_isModePush) && *filter ){
+		fprintf(stderr, "%s\n", "EINVAL: Filtering not supported for push mode.");
+		err = -1; goto fail;
+	}
 
-    return 0;
+	return 0;
 fail:
-    free(*url); *url = NULL;
-    for( unsigned i=0 ; i<*filter_cnt ; ++i ){
-        regfree(&(filter[0][i]));
-    }
-    *filter_cnt = 0;
-    free(*filter); *filter = NULL;
-    return err;
+	free(*url); *url = NULL;
+	for( unsigned i=0 ; i<*filter_cnt ; ++i ){
+		regfree(&(filter[0][i]));
+	}
+	*filter_cnt = 0;
+	free(*filter); *filter = NULL;
+	return err;
 }
 
 
@@ -457,7 +438,6 @@ static void
 onDloadFileResponseHeader( CLOSURE _, char*, int code, char*, struct HttpClientReq_Hdr*, int ){
 	LOGT("[TRACE] @ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 	DEFINE_DloadNode(dload, _);
-	WATCH_STACK_HEIGHT();
 	assert(code >= 100 && code <= 999);
 	dload->httpRspCode = code;
 }
@@ -466,9 +446,7 @@ onDloadFileResponseHeader( CLOSURE _, char*, int code, char*, struct HttpClientR
 static void
 onDloadFileResponseBody( CLOSURE _, char*buf, int len, int flgs ){
 	LOGT("[TRACE] @ %s:%d %s(%s)\n", __FILE__, __LINE__, __func__, (flgs&4)?"EOF":"");
-	int const FLG_EOF = 4;
 	DEFINE_DloadNode(dload, _);
-	WATCH_STACK_HEIGHT();
 	if( len < 0 ){ /* ERROR */
 		downloadFileNode(len, _, NULL, 0);
 		return;
@@ -489,7 +467,7 @@ onDloadFileResponseBody( CLOSURE _, char*buf, int len, int flgs ){
 		memcpy(dload->rspBody + dload->rspBody_len, buf, len);
 		dload->rspBody_len += len;
 	}
-	if( flgs & FLG_EOF ){ /* is last buf */
+	if( flgs & 4 ){ /* is last buf */
 		downloadFileNode(0, _, NULL, 0);
 	}
 }
@@ -504,7 +482,6 @@ static void
 downloadFileNode( REGISTER int err, CLOSURE _, void(*onDone)(int,CLOSURE), CLOSURE onDoneArg ){
 	DEFINE_DloadNode(dload, _);
 	DEFINE_Resclone(resclone, dload->resclone);
-	WATCH_STACK_HEIGHT();
 	#define CORO_STATE dload->coroState
 	enum { begin=0, onFileResponseComplete, onTarHeaderWritten, onTarEntryFullyWritten, };
 	switch( CORO_STATE ){case begin:{
@@ -514,9 +491,8 @@ downloadFileNode( REGISTER int err, CLOSURE _, void(*onDone)(int,CLOSURE), CLOSU
 		assert(onDone);
 		dload->onDone = onDone;
 		dload->onDoneArg = onDoneArg;
-		if( resclone->flg & FLG_printPath ){
+		if( resclone->flg & FLG_printPath )
 			LOGI("GET %s\n", dload->path);
-		}
 		struct HttpClientReq_Opts opts = {
 			.deps = &resclone->deps,
 			.mthd = "GET",
@@ -654,7 +630,6 @@ downloadDirNode( REGISTER int err, CLOSURE _, void(*onDone)(int,CLOSURE), CLOSUR
 	DEFINE_DloadNode(dload, _);
 	DEFINE_Pull(pull, dload->pull);
 	DEFINE_Resclone(resclone, dload->resclone);
-	WATCH_STACK_HEIGHT();
 	#define CORO_STATE dload->coroState
 	enum { begin=0, onResponseComplete, sbLILGAv8I0XmQdfH, nextChild, };
 	switch( CORO_STATE ){case begin:{
@@ -813,8 +788,8 @@ onDstTarChunk(
 ){
 	REGISTER int err; 
 	DEFINE_Resclone(resclone, _);
-	/*TODO use NON-EvLoop thread*/
 	assert(resclone->fileHdl);
+	/*TODO use NON-EvLoop thread*/
 	err = fwrite(buf, 1, len, resclone->fileHdl);
 	onDone((err != len) * -errno, onDoneArg);
 }
@@ -825,31 +800,30 @@ pullFn( REGISTER int err, CLOSURE _ ){
 	DEFINE_Pull(pull, _);
 	DEFINE_Resclone(resclone, container_of(pull, Resclone, pull));
 	#define CORO_STATE pull->coroState
-	enum { begin=0, sGlsFMvmbXCRBhvvn, sORYFewyirNFWty9I, };
+	enum { begin=0, resolveWithErr, sORYFewyirNFWty9I, };
 	switch( CORO_STATE ){case begin:{
 		if( !resclone->file && isatty(1) ){
 			fprintf(stderr, "EINVAL: Refuse to write binary data to tty.\n");
 			resclone->exitCode = -1;
 			return;
 		}
-		/*prepate destination file */{
-			assert(!resclone->fileHdl);
-			if( !resclone->file ){ /* just use stdout then */
-				resclone->fileHdl = stdout;
-			}else{
-				resclone->fileHdl = fopen(resclone->file, "wb");
-				if( !resclone->fileHdl ){ err = -errno;
-					LOGE("%s: %s\n\t@ %s:%d (%s)", strerrname(-err), resclone->file,
-						__FILE__, __LINE__, __func__);
-					goto resolveWithErr;
-				}
+	}/*prepate destination file */{
+		assert(!resclone->fileHdl);
+		if( !resclone->file ){ /* just use stdout then */
+			resclone->fileHdl = stdout;
+		}else{
+			resclone->fileHdl = fopen(resclone->file, "wb");
+			if( !resclone->fileHdl ){ err = -errno;
+				LOGE("%s: %s\n\t@ %s:%d (%s)", strerrname(-err), resclone->file,
+					__FILE__, __LINE__, __func__);
+				goto resolveWithErr;
 			}
-		}/* prepate destination tar */{
-			assert(!resclone->tar);
-			resclone->tar = newTarEnc(&resclone->deps, onDstTarChunk, (CLOSURE)resclone);
-			assert(resclone->tar);
 		}
-		/*initialize entrypoint for recursive downloads*/
+	}/* prepate destination tar */{
+		assert(!resclone->tar);
+		resclone->tar = newTarEnc(&resclone->deps, onDstTarChunk, (CLOSURE)resclone);
+		assert(resclone->tar);
+	}/*initialize entrypoint for recursive downloads*/{
 		DloadNode *dload = &pull->rootDloadNode;
 		assert(dload->mAGIC == 0);
 		*dload = (struct DloadNode){
@@ -866,16 +840,15 @@ pullFn( REGISTER int err, CLOSURE _ ){
 		}
 		memcpy(dload->path, resclone->path, dload->path_len);
 		dload->path[dload->path_len] = '\0';
-		CORO_STATE = sGlsFMvmbXCRBhvvn;
+		CORO_STATE = resolveWithErr;
 		downloadDirNode(0, (CLOSURE)dload, pullFn, _);
 		return;
-	}case sGlsFMvmbXCRBhvvn:{
-	}resolveWithErr:{
+	}case resolveWithErr:resolveWithErr:{
 		if( err != 0 ){
 			LOGD("\t@ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 			exit(1); /*TODO*/
 		}
-		/* finalize tar archive */
+	}/*finalize tar archive*/{
 		CORO_STATE = sORYFewyirNFWty9I;
 		FN_TarEnc_write(resclone->tar, NULL, 0, 8, pullFn, _);
 		return;
@@ -929,10 +902,9 @@ static void
 fGrhy7aquM7pdyI5N( int e, CLOSURE c ){ putFile_kontinue(e, c); }
 /**/
 static void
-putFile_kontinue( int err, Qntan_Cls _ ){
+putFile_kontinue( REGISTER int err, Qntan_Cls _ ){
 	DEFINE_Put(put, _);
 	DEFINE_Push(push, put->push);
-	WATCH_STACK_HEIGHT();
 	#define CORO_STATE put->coroState
 	enum { begin=0, sGJXMLgGGtI3vF6AK, se8WE9EdZpCpsb9v4, onResponseComplete, };
 	switch( CORO_STATE ){case begin:{
@@ -948,9 +920,9 @@ putFile_kontinue( int err, Qntan_Cls _ ){
 		}
 		put->buf_len = err;
 		#define IS_SRC_EOF (!!(put->flg & FLG_tarEntryIsEof))
-		int const flgs = IS_SRC_EOF * 4;
 		CORO_STATE = se8WE9EdZpCpsb9v4;
-		FN_HttpClientReq_write(put->req, put->buf, put->buf_len, flgs, fGrhy7aquM7pdyI5N, _);
+		FN_HttpClientReq_write(put->req, put->buf, put->buf_len, IS_SRC_EOF * 4,
+			fGrhy7aquM7pdyI5N, _);
 		return;
 	}case se8WE9EdZpCpsb9v4:{
 		if( err < 0 ){
@@ -966,9 +938,8 @@ putFile_kontinue( int err, Qntan_Cls _ ){
 		err = 0;  goto readNextChunk;
 		#undef IS_SRC_EOF
 	}case onResponseComplete:{
-		if( put->httpRspCode != 200 ){
-			assert(0);
-		}
+		if( put->httpRspCode != 200 )
+			LOGW("[WARN ] Got HTTP %d\n", put->httpRspCode);
 	}resolveWithErr:{
 		assert(put->mAGIC == Put_mAGIC);
 		put->mAGIC = 0;
@@ -990,9 +961,8 @@ putFile(
 	void(*onDone)(int,Qntan_Cls),
 	Qntan_Cls onDoneArg
 ){
-	assert(onDone);
-	assert(onDoneArg);
-	int err;
+	assert(onDone);  assert(onDoneArg);
+	REGISTER int err;
 	DEFINE_Resclone(resclone, push->resclone);
 	Put*const put = FN_Mallocator_realloc(push->mallocator, NULL, 0, sizeof*put);
 	if( !put ){
@@ -1060,14 +1030,13 @@ static void
 pushTar( REGISTER int err, CLOSURE _ ){
 	DEFINE_Push(push, _);
 	DEFINE_Resclone(resclone, push->resclone);
-	WATCH_STACK_HEIGHT();
 	#define CORO_STATE push->coroState
-	enum { begin=0, sRZZjFzmqtjC5n1hU, sPpWeBYwDHNPrAWdE, szjcxqe7Gxw0KFqui, };
+	enum { begin=0, sRZZjFzmqtjC5n1hU, szjcxqe7Gxw0KFqui, };
 	switch( CORO_STATE ){case begin:{
 		assert(err == 0);
 		if( !resclone->file && isatty(0) ){
 			fprintf(stderr, "EINVAL: Refuse to read binary data from tty.\n");
-			resclone->exitCode = -1;
+			resclone->exitCode = 1;
 			return;
 		}
 	}/*prepare source*/{
@@ -1085,7 +1054,10 @@ pushTar( REGISTER int err, CLOSURE _ ){
 		}
 		push->file = newFileStdlib(&resclone->deps, f, f != stdin, &push->file_unref);
 		if( !push->file ){
-			assert(errno > 0); err = -errno; goto resolveWithErr; }
+			assert(errno > 0); err = -errno;
+			if( f && f != stdin ) fclose(f);
+			goto resolveWithErr;
+		}
 		assert(!push->tar);
 		push->tar = newTarDec(&resclone->deps, push->file);
 		assert(push->tar);
@@ -1095,8 +1067,8 @@ pushTar( REGISTER int err, CLOSURE _ ){
 		return;
 	}case sRZZjFzmqtjC5n1hU:{
 		if( err <= 0 ){
-			if( err == 0 ){ /* EOF */
-				goto resolveWithErr; }
+			if( err == 0 ) /* EOF */
+				goto resolveWithErr;
 			LOGD("%s: tar.nextHdr()\n\t@ %s:%d (%s)\n",
 				strerrname(-err), __FILE__, __LINE__, __func__);
 			goto resolveWithErr;
@@ -1112,14 +1084,12 @@ pushTar( REGISTER int err, CLOSURE _ ){
 			goto resolveWithErr;
 		}
 		goto nextTarEntry;
-	}case sPpWeBYwDHNPrAWdE:{
-		assert(0);
 	}resolveWithErr:{
 		if( err != 0 ){
 			LOGD("\t@ %s:%d (%s)\n", __FILE__, __LINE__, __func__);
 			exit(1); /*TODO*/
 		}
-		LOGD("[DEBUG] Done\n");
+		LOGI("[INFO ] Done\n");
 		return;
 	}}
 	LOGD("assert(s != %d)\n\t@ %s:%d (%s)\n", CORO_STATE, __FILE__, __LINE__, __func__); assert(0);
@@ -1159,6 +1129,8 @@ run( CLOSURE _ ){
 	{
 		memcpy(it, resclone->url + proto_beg, proto_len); it += proto_len;
 		it++[0] = '\0';
+		if( resclone->url[proto_beg + proto_len - 1] == 's' )
+			resclone->flg |= FLG_isTls;
 	}{
 		resclone->host = it;
 		memcpy(it, resclone->url + host_beg, host_len); it += host_len;
@@ -1194,9 +1166,6 @@ run( CLOSURE _ ){
 
 static inline int
 gateleenResclone_run( int argc, char**argv ){
-	#if !NDEBUG
-	int blubb;  stackframeofmain = (uintptr_t)&blubb;
-	#endif
 	int err;
 	Resclone *resclone = &(Resclone){
 		.mAGIC = Resclone_mAGIC,

@@ -2,11 +2,9 @@
 
 #include "gateleen_resclone.h"
 
-#include <stdlib.h>
 
-
-char* fileExtToMime( const char*ext )
-{
+char*
+fileExtToMime( const char*ext ){
     if( ext[0]=='7' ){
         if( ext[1]=='z' ){
             if( ext[2]=='\0' ){

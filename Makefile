@@ -35,7 +35,6 @@ clean:
 
 compile:
 compile: build/obj/common/commonbase.o
-compile: build/obj/entrypoint.o
 compile: build/obj/gateleen_resclone.o
 compile: build/obj/glue_curl.o
 compile: build/obj/glue_garb.o
@@ -48,7 +47,6 @@ build/obj/%.o: src/%.c
 	$(CC) -c -o $@ $< $(CFLAGS) \
 
 build/bin/gateleen-resclone$(BINEXT):
-build/bin/gateleen-resclone$(BINEXT): build/obj/entrypoint.o
 build/bin/gateleen-resclone$(BINEXT): build/lib/libGateleenResclone$(LIBSEXT)
 	@echo "[INFO ] Linking '$@'"
 	@mkdir -p $(shell dirname $@)

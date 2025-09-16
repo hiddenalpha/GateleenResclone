@@ -28,11 +28,6 @@
 /* [Source](https://git.hiddenalpha.ch/UnspecifiedGarbage.git/tree/src/main/c/common/snippets.c) */
 #define container_of(P, T, M) \
      ((T*)( ((size_t)P) - ((size_t)((ptrdiff_t)&((T*)0)->M - (ptrdiff_t)0) )))
-#if _WIN32
-#	define FUCKWINDOOFLONG (long unsigned)
-#else
-#	define FUCKWINDOOFLONG /*no BS needed on sane systems*/
-#endif
 #ifndef FALL
 #	define FALL do{}while(0)
 #endif
