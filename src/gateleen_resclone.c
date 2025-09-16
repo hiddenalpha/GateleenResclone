@@ -784,7 +784,7 @@ downloadDirNode( REGISTER int err, CLOSURE _, void(*onDone)(int,CLOSURE), CLOSUR
 
 static void
 onDstTarChunk(
-	CLOSURE _, char const*buf, int len, int flgs, void(*onDone)(int,CLOSURE), CLOSURE onDoneArg
+	CLOSURE _, char const*buf, int len, int, void(*onDone)(int,CLOSURE), CLOSURE onDoneArg
 ){
 	REGISTER int err; 
 	DEFINE_Resclone(resclone, _);
@@ -872,7 +872,7 @@ onUploadFileResponseHeader( CLOSURE _, char*, int code, char*, struct HttpClient
 
 
 static void
-onUploadFileResponseBody( CLOSURE _, char*buf, int len, int flgs ){
+onUploadFileResponseBody( CLOSURE _, char*, int len, int flgs ){
 	LOGT("[TRACE] @ %s:%d %s(%s)\n", __FILE__, __LINE__, __func__, (flgs&4)?"EOF":"");
 	int const FLG_EOF = 4;
 	DEFINE_Put(put, _);
